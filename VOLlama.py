@@ -19,6 +19,7 @@ class Model:
 		self.client = Client(host=host)
 		self.messages = []
 		self.name = name
+		self.generate = False
 
 	def setHost(self, host):
 		self.host = host
@@ -27,17 +28,19 @@ class Model:
 	def setModel(self, name):
 		self.name = name
 
-	def ask(self, content, responseControl):
+	def ask(self, content, responseControl, onStop):
 		self.messages.append({'role': 'user', 'content': content})
 		try:
 			play("send.wav")
 			response = self.client.chat(model=self.name, messages=self.messages, stream=True)
 			message = ""
 			wx.CallAfter(responseControl.AppendText, self.name[:self.name.index(":")].capitalize() + ": ")
+			self.generate = True
 			for chunk in response:
 				chunk = chunk['message']['content']
 				message += chunk
 				wx.CallAfter(responseControl.AppendText, chunk)
+				if not self.generate: break
 			wx.CallAfter(responseControl.AppendText, "\n")
 			self.messages.append({"role":"assistant", "content":message.strip()})
 			play("receive.wav")
@@ -45,6 +48,10 @@ class Model:
 			dialog = wx.MessageDialog(None, str(e), "Error", wx.OK | wx.ICON_ERROR)
 			dialog.ShowModal()
 			dialog.Destroy()
+		finally:
+			self.generate = False
+			wx.CallAfter(onStop)
+
 
 class ChatWindow(wx.Frame):
 	def __init__(self, parent, title):
@@ -76,12 +83,12 @@ class ChatWindow(wx.Frame):
 		vbox = wx.BoxSizer(wx.VERTICAL)
 		self.response = wx.TextCtrl(panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
 		self.prompt = wx.TextCtrl(panel, style=wx.TE_PROCESS_ENTER)
-		sendButton = wx.Button(panel, label='Send')
-		sendButton.Bind(wx.EVT_BUTTON, self.OnSend)
+		self.sendButton = wx.Button(panel, label='Send')
+		self.sendButton.Bind(wx.EVT_BUTTON, self.OnSend)
 		vbox.Add(self.response, 7, wx.EXPAND | wx.ALL, 5)
 		vbox.Add(self.prompt, 2, wx.EXPAND | wx.LEFT | wx.RIGHT, 5)
 		self.prompt.Bind(wx.EVT_TEXT_ENTER, self.OnSend)
-		vbox.Add(sendButton, 1, wx.EXPAND | wx.ALL, 5)
+		vbox.Add(self.sendButton, 1, wx.EXPAND | wx.ALL, 5)
 		panel.SetSizer(vbox)
 		self.Maximize(True)
 		self.modelList.SetFocus()
@@ -144,14 +151,21 @@ class ChatWindow(wx.Frame):
 		self.prompt.SetFocus()
 
 	def OnSend(self, event):
-		message = self.prompt.GetValue()
-		if message:
-			self.response.AppendText("You: " + message + "\n")
-			self.prompt.SetValue("")
-			threading.Thread(target=self.processMessage, args=(message,)).start()
+		if not self.model.generate:
+			message = self.prompt.GetValue()
+			if message:
+				self.response.AppendText("You: " + message + "\n")
+				self.prompt.SetValue("")
+				self.sendButton.SetLabel("Stop")
+				threading.Thread(target=self.processMessage, args=(message,)).start()
+		else:
+			self.model.generate = False  # Signal to stop generation
 
 	def processMessage(self, message):
-		self.model.ask(message, self.response)
+		self.model.ask(message, self.response, self.onStopGeneration)
+
+	def onStopGeneration(self):
+		self.sendButton.SetLabel("Send")
 
 if __name__ == "__main__":
 	app = wx.App(False)
