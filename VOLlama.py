@@ -33,11 +33,12 @@ class Model:
 			play("send.wav")
 			response = self.client.chat(model=self.name, messages=self.messages, stream=True)
 			message = ""
-			responseControl.AppendText(self.name[:self.name.index(":")].capitalize()+": ")
+			wx.CallAfter(responseControl.AppendText, self.name[:self.name.index(":")].capitalize() + ": ")
 			for chunk in response:
 				chunk = chunk['message']['content']
 				message += chunk
-				responseControl.AppendText(chunk)
+				wx.CallAfter(responseControl.AppendText, chunk)
+			wx.CallAfter(responseControl.AppendText, "\n")
 			self.messages.append({"role":"assistant", "content":message.strip()})
 			play("receive.wav")
 		except Exception as e:
