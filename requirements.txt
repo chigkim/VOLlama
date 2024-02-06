@@ -1,0 +1,6 @@
+ollama
+pyinstaller
+sounddevice
+soundfile
+wxpython
+numpy
