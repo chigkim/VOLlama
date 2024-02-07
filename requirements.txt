@@ -4,5 +4,3 @@ sounddevice
 soundfile
 wxpython
 numpy
-openai-whisper
-RealtimeTTS  

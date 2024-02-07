@@ -3,9 +3,7 @@ import threading
 import sounddevice as sd
 import soundfile as sf
 import os
-from AudioTranscriber import AudioTranscriber
 from Model import Model
-from Speech import Speech
 
 def playSD(file):
 	p = os.path.join(os.path.dirname(__file__), file)
@@ -18,8 +16,6 @@ def play(file):
 class ChatWindow(wx.Frame):
 	def __init__(self, parent, title):
 		super(ChatWindow, self).__init__(parent, title=title, size=(1920,1080))
-		self.transcriber = AudioTranscriber()
-		self.speech = Speech()
 		self.model = Model()
 		self.InitUI()
 		self.Centre()
@@ -70,15 +66,10 @@ class ChatWindow(wx.Frame):
 		self.prompt.Bind(wx.EVT_TEXT_ENTER, self.OnSend)
 		self.sendButton = wx.Button(panel, label='Send')
 		self.sendButton.Bind(wx.EVT_BUTTON, self.OnSend)
-		self.recordTranscribeButton = wx.Button(panel, label='Record')
-		self.recordTranscribeButton.Bind(wx.EVT_BUTTON, self.OnRecordAndTranscribe)
-		hboxButtons = wx.BoxSizer(wx.HORIZONTAL)
-		hboxButtons.Add(self.sendButton, 1, wx.EXPAND | wx.RIGHT, 5)
-		hboxButtons.Add(self.recordTranscribeButton, 1, wx.EXPAND)
 		vbox = wx.BoxSizer(wx.VERTICAL)
 		vbox.Add(self.response, 7, wx.EXPAND | wx.ALL, 5)
 		vbox.Add(self.prompt, 2, wx.EXPAND | wx.LEFT | wx.RIGHT, 5)
-		vbox.Add(hboxButtons, 1, wx.EXPAND | wx.ALL, 5)
+		vbox.Add(self.sendButton, 1, wx.EXPAND | wx.ALL, 5)
 		panel.SetSizer(vbox)
 		self.Maximize(True)
 		self.modelList.SetFocus()
@@ -143,16 +134,6 @@ class ChatWindow(wx.Frame):
 
 	def FocusOnPrompt(self, event):
 		self.prompt.SetFocus()
-
-	def OnRecordAndTranscribe(self, event):
-		self.recordTranscribeButton.Disable()
-		
-		def record_and_transcribe():
-			transcription =  self.transcriber.start()
-			wx.CallAfter(self.prompt.SetValue, transcription)
-			wx.CallAfter(self.recordTranscribeButton.Enable)
-	
-		threading.Thread(target=record_and_transcribe).start()
 		
 	def OnSend(self, event):
 
@@ -161,7 +142,6 @@ class ChatWindow(wx.Frame):
 			self.model.ask(message, self.response, onStopGeneration)
 	
 		def onStopGeneration():
-			self.speech.speak(self.model.messages[-1]['content'])
 			play("receive.wav")
 			self.sendButton.SetLabel("Send")
 
