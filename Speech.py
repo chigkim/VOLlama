@@ -1,15 +1,13 @@
-import torch
-from TTS.api import TTS
-import sounddevice as sd
+from RealtimeTTS import TextToAudioStream, SystemEngine
 import threading
 
 class Speech:
 	def __init__(self):
-		device = "cuda" if torch.cuda.is_available() else "cpu"
-		self.tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2").to(device)
+		engine = SystemEngine()
+		self.stream = TextToAudioStream(engine)
 
 	def speak(self, text):
 		def generate(text):
-			wav = self.tts.tts(text=text, speaker_wav="speaker.wav", language="en")
-			sd.play(wav, samplerate=22050)
+			self.stream.feed(text)
+			self.stream.play_async()
 		threading.Thread(target=generate, args=(text,)).start()

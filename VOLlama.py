@@ -161,8 +161,8 @@ class ChatWindow(wx.Frame):
 			self.model.ask(message, self.response, onStopGeneration)
 	
 		def onStopGeneration():
+			self.speech.speak(self.model.messages[-1]['content'])
 			play("receive.wav")
-			#self.speech.speak(self.model.messages[-1]['content'])
 			self.sendButton.SetLabel("Send")
 
 		if not self.model.generate:
