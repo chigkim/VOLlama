@@ -4,6 +4,7 @@ import sounddevice as sd
 import soundfile as sf
 import os
 from Model import Model
+from Settings import load_settings, save_settings
 
 def playSD(file):
 	p = os.path.join(os.path.dirname(__file__), file)
@@ -16,7 +17,9 @@ def play(file):
 class ChatWindow(wx.Frame):
 	def __init__(self, parent, title):
 		super(ChatWindow, self).__init__(parent, title=title, size=(1920,1080))
-		self.model = Model()
+		self.settings = load_settings()
+		print(self.settings.to_dict())
+		self.model = Model(host=self.settings.host)
 		self.InitUI()
 		self.Centre()
 		self.Show()
@@ -102,7 +105,10 @@ class ChatWindow(wx.Frame):
 	def setHost(self, event):
 		dlg = wx.TextEntryDialog(self, "Enter the host address:", "Host", value=self.model.host)
 		if dlg.ShowModal() == wx.ID_OK:
-			self.model.setHost(dlg.GetValue())
+			host = dlg.GetValue()
+			self.model.setHost(host)
+			self.settings.host = host
+			save_settings()
 			self.refreshModels()
 		dlg.Destroy()
 

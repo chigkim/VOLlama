@@ -4,3 +4,4 @@ sounddevice
 soundfile
 wxpython
 numpy
+appdirs
