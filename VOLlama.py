@@ -136,9 +136,12 @@ class ChatWindow(wx.Frame):
 		dlg.Destroy()
 
 	def setSystem(self, event):
-		dlg = wx.TextEntryDialog(self, "Enter the system message:", "System")
+		dlg = wx.TextEntryDialog(self, "Enter the system message:", "System", value=self.settings.system)
 		if dlg.ShowModal() == wx.ID_OK:
-			self.model.setSystem(dlg.GetValue())
+			system = dlg.GetValue()
+			self.model.setSystem(system)
+			self.settings.system = system
+			save_settings()
 		dlg.Destroy()
 
 	def OnCopyModel(self, event):
