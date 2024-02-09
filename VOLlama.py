@@ -82,10 +82,17 @@ class ChatWindow(wx.Frame):
 		self.prompt.Bind(wx.EVT_TEXT_ENTER, self.OnSend)
 		self.sendButton = wx.Button(panel, label='Send')
 		self.sendButton.Bind(wx.EVT_BUTTON, self.OnSend)
+		self.uploadImageButton = wx.Button(panel, label='Attach Image')
+		self.uploadImageButton.Bind(wx.EVT_BUTTON, self.onUploadImage)
+
+		hboxButtons = wx.BoxSizer(wx.HORIZONTAL)
+		hboxButtons.Add(self.uploadImageButton, 1, wx.EXPAND | wx.RIGHT, 1)
+		hboxButtons.Add(self.sendButton, 1, wx.EXPAND)
+
 		vbox = wx.BoxSizer(wx.VERTICAL)
 		vbox.Add(self.response, 7, wx.EXPAND | wx.ALL, 5)
 		vbox.Add(self.prompt, 2, wx.EXPAND | wx.LEFT | wx.RIGHT, 5)
-		vbox.Add(self.sendButton, 1, wx.EXPAND | wx.ALL, 5)
+		vbox.Add(hboxButtons, 1, wx.EXPAND | wx.ALL, 5)
 		panel.SetSizer(vbox)
 		self.Maximize(True)
 		self.modelList.SetFocus()
@@ -220,6 +227,14 @@ class ChatWindow(wx.Frame):
 				messages = json.load(f)
 				self.model.messages = messages
 				self.refreshChat(messages)
+
+	def onUploadImage(self,e):
+		with wx.FileDialog(self, "Open", "", "", wildcard="Image files (*.jpg;*.jpeg;*.png)|*.jpg;*.jpeg;*.png", style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as dlg:
+			if dlg.ShowModal() == wx.ID_CANCEL: return
+			filename = dlg.GetFilename()
+			dirname = dlg.GetDirectory()
+			file = os.path.join(dirname, filename)
+			self.model.image = file
 
 	def onSave(self, e):
 		name = self.model.name[:self.model.name.index(":")].capitalize()
