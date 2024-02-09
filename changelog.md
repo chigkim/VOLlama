@@ -16,3 +16,22 @@ It is very important for Mac users to turn off smart quotes before opening copy 
 
 *macOS 13 Ventura or later: System settings > Keyboard > Edit input sorce > turn off smart quotes
 * Before Ventura: System preferences > keyboard > text > uncheck smart quotes
+
+## Instruction
+
+You need to first [setup Ollama](https://ollama.ai/) and download a model on Ollama before you can use this.
+
+For Windows users Docker is probably the easiest way to get Ollama going:
+
+1. [install Docker](https://docs.docker.com/get-docker/)
+2. Run the following command In command line to install Ollama: `docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama`
+3. Run the following command to download a model replace zephyr with [different models](https://ollama.ai//library): `docker exec -it ollama ollama pull zephyr`
+4. Run VOLlama.exe
+
+## Shortcuts
+
+* Control+m: focusses on model list
+* Control(Command)+Enter: new line
+* Esc: change focus to prompt
+
+If you're running Ollama on another machine, you can set the host address from the dvance menu.
