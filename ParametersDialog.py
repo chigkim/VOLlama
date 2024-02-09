@@ -2,7 +2,7 @@ import wx
 
 class ParametersDialog(wx.Dialog):
 	def __init__(self, parent, title):
-		super(CopyDialog, self).__init__(parent, title=title, size=(300, 600))
+		super(ParametersDialog, self).__init__(parent, title=title, size=(300, 600))
 		self.mainSizer = wx.BoxSizer(wx.VERTICAL)
 		self.name = wx.TextCtrl(self)
 		self.modelfile = wx.TextCtrl(self)
@@ -15,7 +15,7 @@ class ParametersDialog(wx.Dialog):
 		self.SetSizer(self.mainSizer)
 		self.mainSizer.Fit(self)
 
-dialog = CopyDialog(None, title="Copy")
+dialog = ParametersDialog(None, title="Parameters")
 dialog.name.SetValue("Initial value for text 1")
 dialog.modelfile.SetValue("Initial value for text 2")
 if dialog.ShowModal() == wx.ID_OK:

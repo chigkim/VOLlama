@@ -5,6 +5,7 @@ import soundfile as sf
 import os
 from Model import Model
 from Settings import load_settings, save_settings
+from CopyDialog import CopyDialog
 
 def playSD(file):
 	p = os.path.join(os.path.dirname(__file__), file)
@@ -37,12 +38,17 @@ class ChatWindow(wx.Frame):
 		self.Bind(wx.EVT_MENU, self.OnExit, exitMenu)
 
 		optionMenu= wx.Menu()
-		hostMenu = optionMenu.Append(wx.ID_ANY, "Set Host\tCTRL+SHIFT+H")
+		setSystemMenu = optionMenu.Append(wx.ID_ANY, "Set System Message...\tCTRL+ALT+S")
+		self.Bind(wx.EVT_MENU, self.setSystem, setSystemMenu)
+		copyModelMenu = optionMenu.Append(wx.ID_ANY, "Copy Model...")
+		self.Bind(wx.EVT_MENU, self.OnCopyModel, copyModelMenu)
+		deleteModelMenu = optionMenu.Append(wx.ID_ANY, "Delete Model")
+		self.Bind(wx.EVT_MENU, self.OnDeleteModel, deleteModelMenu)
+		hostMenu = optionMenu.Append(wx.ID_ANY, "Set Host...")
 		self.Bind(wx.EVT_MENU, self.setHost, hostMenu)
-
 		menuBar = wx.MenuBar()
 		menuBar.Append(chatMenu,"&Chat")
-		menuBar.Append(optionMenu,"&Option")
+		menuBar.Append(optionMenu,"&Advance")
 		self.SetMenuBar(menuBar)
 
 		self.toolbar = self.CreateToolBar(wx.TB_HORIZONTAL | wx.NO_BORDER | wx.TB_FLAT)
@@ -51,7 +57,7 @@ class ChatWindow(wx.Frame):
 		self.modelList.Bind(wx.EVT_CHOICE, self.onSelectModel)
 		self.toolbar.AddControl(self.modelList, "Model")
 		self.refreshModels()
-		self.copyButton = wx.Button(self.toolbar, label="Copy")
+		self.copyButton = wx.Button(self.toolbar, label="Copy Last Message")
 		self.toolbar.AddControl(self.copyButton, "Copy Message")
 		self.copyButton.Bind(wx.EVT_BUTTON, self.OnCopyMessage)
 
@@ -78,9 +84,13 @@ class ChatWindow(wx.Frame):
 		self.modelList.SetFocus()
 
 	def clearLast(self, event):
+		if len(self.model.messages)<2: return
 		self.model.messages = self.model.messages[:-2]
 		text = ""
-		for i in range(0,len(self.model.messages),2):
+		start = 0
+		if self.model.messages[0]['role'] == 'system':
+			start = 1
+		for i in range(start,len(self.model.messages),2):
 			text += f"You: {self.model.messages[i]['content']}\n"
 			text += f"{self.model.name[:self.model.name.index(':')].capitalize()}: {self.model.messages[i+1]['content']}\n"
 		self.response.SetValue(text)
@@ -112,6 +122,32 @@ class ChatWindow(wx.Frame):
 			self.refreshModels()
 		dlg.Destroy()
 
+	def setSystem(self, event):
+		dlg = wx.TextEntryDialog(self, "Enter the system message:", "System")
+		if dlg.ShowModal() == wx.ID_OK:
+			system = {'role': 'system', 'content':dlg.GetValue()}
+			if len(self.model.messages) == 0 or self.model.messages[0]['role'] != "system":
+				self.model.messages.insert(0, system)
+			elif self.model.messages[0]['role'] == "system":
+				self.model.messages[0] = system
+		dlg.Destroy()
+
+	def OnCopyModel(self, event):
+		dialog = CopyDialog(self, title="Copy Model")
+		dialog.name.SetValue("copy-"+self.model.name)
+		dialog.modelfile.SetValue(self.model.client.show(self.model.name)['modelfile'])
+		if dialog.ShowModal() == wx.ID_OK:
+			name = dialog.name.GetValue()
+			modelfile = dialog.modelfile.GetValue()
+			result = self.model.client.create(name, modelfile=modelfile, stream=False)
+			print(result)
+			self.refreshModels()
+		dialog.Destroy()
+
+	def OnDeleteModel(self, event):
+		self.model.client.delete(self.model.name)
+		self.refreshModels()
+
 	def OnNewChat(self, event):
 		self.response.SetValue("")
 
@@ -126,7 +162,7 @@ class ChatWindow(wx.Frame):
 
 	def SetupAccelerators(self):
 		shortcuts = {
-			"model":(wx.ACCEL_CTRL, ord('M'), wx.NewIdRef()),
+				"model":(wx.ACCEL_CTRL|wx.ACCEL_ALT, ord('M'), wx.NewIdRef()),
 			"prompt":(wx.ACCEL_NORMAL, wx.WXK_ESCAPE, wx.NewIdRef()),
 		}
 		accelEntries = [v for k,v in shortcuts.items()]
