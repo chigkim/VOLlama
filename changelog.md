@@ -1,11 +1,12 @@
 # Change log
 
+* Attach image for vision-language model like Llava
 * Create multiline prompt with Control(Command)+Enter
 * Set system message in advance menu
 * Delete model  in advance menu
 * Persistent Settings for system message and host address
 * Save and recall chat history
-* Focuss model list: Control(Command)+L
+* Focus model list: Control(Command)+L
 
 ## Copy model in advance menu
 
