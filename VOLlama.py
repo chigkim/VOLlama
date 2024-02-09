@@ -176,7 +176,7 @@ class ChatWindow(wx.Frame):
 
 	def SetupAccelerators(self):
 		shortcuts = {
-				"model":(wx.ACCEL_CTRL|wx.ACCEL_ALT, ord('M'), wx.NewIdRef()),
+			"model":(wx.ACCEL_CTRL, ord('l'), wx.NewIdRef()),
 			"prompt":(wx.ACCEL_NORMAL, wx.WXK_ESCAPE, wx.NewIdRef()),
 		}
 		accelEntries = [v for k,v in shortcuts.items()]
