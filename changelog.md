@@ -1,0 +1,18 @@
+# Change log
+
+* Create multiline prompt with Control(or command)+Enter
+* Set system message in advance menu
+* Delete model  in advance menu
+* Persistent Settings for system message and host address
+* Save and recall chat history
+
+## Copy model in advance menu
+
+It allows to duplicate an existing model through modelfile, and you can use it like preset with different name and parameters like temperature, repeat penalty, Maximum length to generate, context length, etc. It does not duplicate the model weight files, so you won't wasting your storage space even if you duplicate and create bunch.
+
+See [modelfile](https://github.com/ollama/ollama/blob/main/docs/modelfile.md) for more detail.
+
+It is very important for Mac users to turn off smart quotes before opening copy model dialog. If you see left double quotation mark instead of quotation mark in modelfile, that means you have smart quotes on.
+
+*macOS 13 Ventura or later: System settings > Keyboard > Edit input sorce > turn off smart quotes
+* Before Ventura: System preferences > keyboard > text > uncheck smart quotes

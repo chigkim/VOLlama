@@ -78,7 +78,7 @@ class ChatWindow(wx.Frame):
 		self.SetupAccelerators()
 		panel = wx.Panel(self)
 		self.response = wx.TextCtrl(panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
-		self.prompt = wx.TextCtrl(panel, style=wx.TE_PROCESS_ENTER)
+		self.prompt = wx.TextCtrl(panel, style=wx.TE_PROCESS_ENTER|wx.TE_MULTILINE)
 		self.prompt.Bind(wx.EVT_TEXT_ENTER, self.OnSend)
 		self.sendButton = wx.Button(panel, label='Send')
 		self.sendButton.Bind(wx.EVT_BUTTON, self.OnSend)
