@@ -97,6 +97,9 @@ class ChatWindow(wx.Frame):
 
 	def refreshChat(self, messages):
 		text = ""
+		if len(self.model.messages)<2:
+			self.response.SetValue(text)
+			return
 		start = 0
 		if messages[0]['role'] == 'system':
 			start = 1
