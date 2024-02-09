@@ -6,6 +6,8 @@ import os
 from Model import Model
 from Settings import load_settings, save_settings
 from CopyDialog import CopyDialog
+import codecs
+import json
 
 def playSD(file):
 	p = os.path.join(os.path.dirname(__file__), file)
@@ -30,6 +32,10 @@ class ChatWindow(wx.Frame):
 		chatMenu= wx.Menu()
 		newMenu = chatMenu.Append(wx.ID_NEW)
 		self.Bind(wx.EVT_MENU, self.OnNewChat, newMenu)
+		openMenu = chatMenu.Append(wx.ID_OPEN)
+		self.Bind(wx.EVT_MENU, self.onOpen, openMenu)
+		saveMenu = chatMenu.Append(wx.ID_SAVE)
+		self.Bind(wx.EVT_MENU, self.onSave, saveMenu)
 		copyMenu = chatMenu.Append(wx.ID_ANY, "&Copy\tCTRL+SHIFT+C")
 		self.Bind(wx.EVT_MENU, self.OnCopyMessage, copyMenu)
 		clearMenu = chatMenu.Append(wx.ID_ANY, "Clear\tCTRL+K")
@@ -86,13 +92,16 @@ class ChatWindow(wx.Frame):
 	def clearLast(self, event):
 		if len(self.model.messages)<2: return
 		self.model.messages = self.model.messages[:-2]
+		self.refreshChat(self.model.messages)
+
+	def refreshChat(self, messages):
 		text = ""
 		start = 0
-		if self.model.messages[0]['role'] == 'system':
+		if messages[0]['role'] == 'system':
 			start = 1
-		for i in range(start,len(self.model.messages),2):
-			text += f"You: {self.model.messages[i]['content']}\n"
-			text += f"{self.model.name[:self.model.name.index(':')].capitalize()}: {self.model.messages[i+1]['content']}\n"
+		for i in range(start,len(messages),2):
+			text += f"You: {messages[i]['content']}\n"
+			text += f"{self.model.name[:self.model.name.index(':')].capitalize()}: {messages[i+1]['content']}\n"
 		self.response.SetValue(text)
 
 	def refreshModels(self):
@@ -196,6 +205,25 @@ class ChatWindow(wx.Frame):
 				threading.Thread(target=processMessage, args=(message,)).start()
 		else:
 			self.model.generate = False
+
+	def onOpen(self,e):
+		with wx.FileDialog(self, "Open", "", "", "*.json", style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as dlg:
+			if dlg.ShowModal() == wx.ID_CANCEL: return
+			filename = dlg.GetFilename()
+			dirname = dlg.GetDirectory()
+			with codecs.open(os.path.join(dirname, filename), 'r', 'utf-8') as f:
+				messages = json.load(f)
+				self.model.messages = messages
+				self.refreshChat(messages)
+
+	def onSave(self, e):
+		name = self.model.name[:self.model.name.index(":")].capitalize()
+		with wx.FileDialog(self, "Save", "", name+".json", "*.json", style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as dlg:
+			if dlg.ShowModal() == wx.ID_CANCEL: return wx.ID_CANCEL
+			filename = dlg.GetFilename()
+			dirname = dlg.GetDirectory()
+			with codecs.open(os.path.join(dirname, filename), 'w', 'utf-8') as f:
+				json.dump(self.model.messages, f, indent="\t")
 
 	def OnExit(self, event):
 		self.Destroy()
