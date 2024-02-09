@@ -14,6 +14,14 @@ class Model:
 		self.host = host
 		self.client = Client(host=host)
 
+	def setSystem(self, system):
+		if system == "": return
+		system = {'role': 'system', 'content':system}
+		if len(self.messages) == 0 or self.messages[0]['role'] != "system":
+			self.messages.insert(0, system)
+		elif self.messages[0]['role'] == "system":
+			self.messages[0] = system
+
 	def ask(self, content, responseControl, onStop):
 		self.messages.append({'role': 'user', 'content': content})
 		try:

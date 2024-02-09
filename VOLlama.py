@@ -23,6 +23,7 @@ class ChatWindow(wx.Frame):
 		self.settings = load_settings()
 		print(self.settings.to_dict())
 		self.model = Model(host=self.settings.host)
+		self.model.setSystem(self.settings.system)
 		self.InitUI()
 		self.Centre()
 		self.Show()
@@ -134,11 +135,7 @@ class ChatWindow(wx.Frame):
 	def setSystem(self, event):
 		dlg = wx.TextEntryDialog(self, "Enter the system message:", "System")
 		if dlg.ShowModal() == wx.ID_OK:
-			system = {'role': 'system', 'content':dlg.GetValue()}
-			if len(self.model.messages) == 0 or self.model.messages[0]['role'] != "system":
-				self.model.messages.insert(0, system)
-			elif self.model.messages[0]['role'] == "system":
-				self.model.messages[0] = system
+			self.model.setSystem(dlg.GetValue())
 		dlg.Destroy()
 
 	def OnCopyModel(self, event):
@@ -159,6 +156,8 @@ class ChatWindow(wx.Frame):
 
 	def OnNewChat(self, event):
 		self.response.SetValue("")
+		self.model.messages = []
+		self.model.setSystem(self.settings.system)
 
 	def OnCopyMessage(self, event):
 		message = self.model.messages[-1]['content'].strip()
