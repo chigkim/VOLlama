@@ -1,33 +1,33 @@
 # VOLlama
 An accessible chat client for Ollama
 
-## Instruction
+## Instructions
 
-You need to first [setup Ollama](https://ollama.ai/) and download a model on Ollama before you can use this.
+To use VOLlama, you must first set up Ollama and download a model from Ollama's library. Follow these steps:
 
-For Windows users Docker is probably the easiest way to get Ollama going:
+For Windows users, Docker is likely the most straightforward method to install Ollama:
 
-1. [install Docker](https://docs.docker.com/get-docker/)
-2. Run the following command In command line to install Ollama: `docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama`
-3. Run the following command to download a model replace zephyr with [different models](https://ollama.ai//library): `docker exec -it ollama ollama pull zephyr`
+1. [Install Docker](https://docs.docker.com/get-docker/).
+2. Run the command below in the command line to install Ollama: docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama`
+3. To download a model, execute the command below, replacing `openhermes` with a [different model](https://ollama.ai/library) as needed: `docker exec -it ollama ollama pull openhermes`
 4. Run VOLlama.exe
 
 ## Shortcuts
 
-* Control+m: focusses on model list
-* Control(Command)+Enter: new line
-* Esc: change focus to prompt
+* Control (Command) + L: Focus on the model list.
+* Control (Command) + Enter: Insert a new line.
+* Esc: Shift focus to the prompt.
 
-If you're running Ollama on another machine, you can set the host address from the dvance menu.
+If you're operating Ollama on a different machine, you can configure the host address in the advanced menu.
 
-## Copy model in advance menu
+## Copy Model in Advanced Menu
 
-It allows to duplicate an existing model through modelfile, and you can use it like preset with different name and parameters like temperature, repeat penalty, Maximum length to generate, context length, etc. It does not duplicate the model weight files, so you won't wasting your storage space even if you duplicate and create bunch.
+This feature allows you to duplicate an existing model via a modelfile, enabling you to use it as a preset with a different name and parameters (such as temperature, repeat penalty, maximum generation length, context length, etc.). It does not duplicate the model's weight files, conserving storage space even with multiple duplicates.
 
-See [modelfile](https://github.com/ollama/ollama/blob/main/docs/modelfile.md) for more detail.
+For more details, see [modelfile](https://github.com/ollama/ollama/blob/main/docs/modelfile.md).
 
-It is very important for Mac users to turn off smart quotes before opening copy model dialog. If you see left double quotation mark instead of quotation mark in modelfile, that means you have smart quotes on.
+For Mac users, it's crucial to disable smart quotes before opening the copy model dialog. If your modelfile displays a left double quotation mark instead of a straight quotation mark, smart quotes are enabled.
 
-*macOS 13 Ventura or later: System settings > Keyboard > Edit input sorce > turn off smart quotes
-* Before Ventura: System preferences > keyboard > text > uncheck smart quotes
+* MacOS 13 Ventura or later: Go to System Settings > Keyboard > Edit Input Source > turn off smart quotes.
+* Before Ventura: Navigate to System Preferences > Keyboard > Text > uncheck smart quotes.
 
