@@ -5,3 +5,10 @@ soundfile
 wxpython
 numpy
 appdirs
+llama-index
+torch
+transformers
+pypdf
+docx2txt
+trafilatura
+cryptography

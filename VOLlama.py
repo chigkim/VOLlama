@@ -41,6 +41,12 @@ class ChatWindow(wx.Frame):
 		self.Bind(wx.EVT_MENU, self.OnCopyMessage, copyMenu)
 		clearMenu = chatMenu.Append(wx.ID_ANY, "Clear\tCTRL+K")
 		self.Bind(wx.EVT_MENU, self.clearLast, clearMenu)
+		imageMenu = chatMenu.Append(wx.ID_ANY, "Attach an &Image...\tCTRL+I")
+		self.Bind(wx.EVT_MENU, self.onUploadImage, imageMenu)
+		documentMenu = chatMenu.Append(wx.ID_ANY, "Attach Documents...\tCTRL+D")
+		self.Bind(wx.EVT_MENU, self.onUploadDocuments, documentMenu)
+		urlMenu = chatMenu.Append(wx.ID_ANY, "Attach an &URL...\tCTRL+U")
+		self.Bind(wx.EVT_MENU, self.onUploadURLButton, urlMenu)
 		exitMenu = chatMenu.Append(wx.ID_EXIT)
 		self.Bind(wx.EVT_MENU, self.OnExit, exitMenu)
 
@@ -57,7 +63,7 @@ class ChatWindow(wx.Frame):
 		menuBar.Append(chatMenu,"&Chat")
 		menuBar.Append(optionMenu,"&Advance")
 		self.SetMenuBar(menuBar)
-
+		
 		self.toolbar = self.CreateToolBar(wx.TB_HORIZONTAL | wx.NO_BORDER | wx.TB_FLAT)
 		self.models = []
 		self.modelList= wx.Choice(self.toolbar, choices=self.models)
@@ -82,20 +88,17 @@ class ChatWindow(wx.Frame):
 		self.prompt.Bind(wx.EVT_TEXT_ENTER, self.OnSend)
 		self.sendButton = wx.Button(panel, label='Send')
 		self.sendButton.Bind(wx.EVT_BUTTON, self.OnSend)
-		self.uploadImageButton = wx.Button(panel, label='Attach Image')
-		self.uploadImageButton.Bind(wx.EVT_BUTTON, self.onUploadImage)
-
-		hboxButtons = wx.BoxSizer(wx.HORIZONTAL)
-		hboxButtons.Add(self.uploadImageButton, 1, wx.EXPAND | wx.RIGHT, 1)
-		hboxButtons.Add(self.sendButton, 1, wx.EXPAND)
 
 		vbox = wx.BoxSizer(wx.VERTICAL)
 		vbox.Add(self.response, 7, wx.EXPAND | wx.ALL, 5)
 		vbox.Add(self.prompt, 2, wx.EXPAND | wx.LEFT | wx.RIGHT, 5)
-		vbox.Add(hboxButtons, 1, wx.EXPAND | wx.ALL, 5)
+		vbox.Add(self.sendButton, 1, wx.EXPAND | wx.ALL, 5)
 		panel.SetSizer(vbox)
 		self.Maximize(True)
 		self.modelList.SetFocus()
+
+	def setStatus(self, text):
+			self.SetStatusText(text)
 
 	def clearLast(self, event):
 		if len(self.model.messages)<2: return
@@ -171,6 +174,8 @@ class ChatWindow(wx.Frame):
 		self.response.SetValue("")
 		self.model.messages = []
 		self.model.setSystem(self.settings.system)
+		self.folder = None
+		self.url = None
 
 	def OnCopyMessage(self, event):
 		message = self.model.messages[-1]['content'].strip()
@@ -179,7 +184,7 @@ class ChatWindow(wx.Frame):
 			wx.TheClipboard.Close()
 
 	def onSelectModel(self, event=None):
-		self.model.name = self.modelList.GetString(self.modelList.GetSelection())
+		self.model.setModel(self.modelList.GetString(self.modelList.GetSelection()))
 
 	def SetupAccelerators(self):
 		shortcuts = {
@@ -229,12 +234,28 @@ class ChatWindow(wx.Frame):
 				self.refreshChat(messages)
 
 	def onUploadImage(self,e):
-		with wx.FileDialog(self, "Open", "", "", wildcard="Image files (*.jpg;*.jpeg;*.png)|*.jpg;*.jpeg;*.png", style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as dlg:
+		with wx.FileDialog(self, "Choose an image", wildcard="Image files (*.jpg;*.jpeg;*.png)|*.jpg;*.jpeg;*.png", style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as dlg:
 			if dlg.ShowModal() == wx.ID_CANCEL: return
 			filename = dlg.GetFilename()
 			dirname = dlg.GetDirectory()
 			file = os.path.join(dirname, filename)
 			self.model.image = file
+
+	def onUploadDocuments(self,e):
+		with wx.DirDialog(None, "Choose a folder with documents:", style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST) as dlg:
+			if dlg.ShowModal() == wx.ID_CANCEL: return
+			folder = dlg.GetPath()
+			self.model.folder = folder
+			self.setStatus("Indexing...")
+			threading.Thread(target=self.model.rag.loadFolder, args=(folder, self.setStatus)).start()
+
+	def onUploadURLButton(self, e):
+		with wx.TextEntryDialog(self, "Enter an url to index::", "URL", value="https://") as dlg:
+			if dlg.ShowModal() == wx.ID_OK:
+				url = dlg.GetValue()
+				self.model.url = url
+				self.setStatus("Indexing...")
+				threading.Thread(target=self.model.rag.loadUrl, args=(url, self.setStatus)).start()
 
 	def onSave(self, e):
 		name = self.model.name[:self.model.name.index(":")].capitalize()
