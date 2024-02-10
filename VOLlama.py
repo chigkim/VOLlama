@@ -24,7 +24,10 @@ class ChatWindow(wx.Frame):
 		self.settings = load_settings()
 		print(self.settings.to_dict())
 		self.speech = Speech()
+		print(self.speech.get_voices())
+		print(self.speech.get_rate())
 		self.model = Model(host=self.settings.host)
+		self.speech.set_rate(10)
 		self.model.setSystem(self.settings.system)
 		self.InitUI()
 		self.Centre()
@@ -45,9 +48,11 @@ class ChatWindow(wx.Frame):
 		self.Bind(wx.EVT_MENU, self.clearLast, clearMenu)
 		imageMenu = chatMenu.Append(wx.ID_ANY, "Attach an &Image...\tCTRL+I")
 		self.Bind(wx.EVT_MENU, self.onUploadImage, imageMenu)
+		self.speakResponse = chatMenu.Append(wx.ID_ANY, "Speak Response with System Voice", kind=wx.ITEM_CHECK)
+		self.speakResponse.Check(self.settings.speakResponse)
+		self.Bind(wx.EVT_MENU, self.onToggleSpeakResponse, self.speakResponse)
 		exitMenu = chatMenu.Append(wx.ID_EXIT)
 		self.Bind(wx.EVT_MENU, self.OnExit, exitMenu)
-
 		optionMenu= wx.Menu()
 		setSystemMenu = optionMenu.Append(wx.ID_ANY, "Set System Message...\tCTRL+ALT+S")
 		self.Bind(wx.EVT_MENU, self.setSystem, setSystemMenu)
@@ -143,6 +148,10 @@ class ChatWindow(wx.Frame):
 			self.refreshModels()
 		dlg.Destroy()
 
+	def onToggleSpeakResponse(self, e):
+		self.settings.speakResponse = self.speakResponse.IsChecked()
+		save_settings()
+
 	def setSystem(self, event):
 		dlg = wx.TextEntryDialog(self, "Enter the system message:", "System", value=self.settings.system)
 		if dlg.ShowModal() == wx.ID_OK:
@@ -204,7 +213,7 @@ class ChatWindow(wx.Frame):
 		self.prompt.SetFocus()
 
 	def onStopGeneration(self):
-		self.speech.speak(self.model.messages[-1]['content'])
+		if self.speakResponse.IsChecked(): self.speech.speak(self.model.messages[-1]['content'])
 		play("receive.wav")
 		self.sendButton.SetLabel("Send")
 

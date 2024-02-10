@@ -55,5 +55,6 @@ def load_settings():
 settings_dict = {
 	'host':'http://localhost:11434',
 	'system':"",
+	'speakResponse':False,
 }
 settings = DotDict(settings_dict)
