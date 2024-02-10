@@ -41,6 +41,8 @@ class ChatWindow(wx.Frame):
 		self.Bind(wx.EVT_MENU, self.OnCopyMessage, copyMenu)
 		clearMenu = chatMenu.Append(wx.ID_ANY, "Clear\tCTRL+K")
 		self.Bind(wx.EVT_MENU, self.clearLast, clearMenu)
+		imageMenu = chatMenu.Append(wx.ID_ANY, "Attach an &Image...\tCTRL+I")
+		self.Bind(wx.EVT_MENU, self.onUploadImage, imageMenu)
 		exitMenu = chatMenu.Append(wx.ID_EXIT)
 		self.Bind(wx.EVT_MENU, self.OnExit, exitMenu)
 
@@ -82,20 +84,17 @@ class ChatWindow(wx.Frame):
 		self.prompt.Bind(wx.EVT_TEXT_ENTER, self.OnSend)
 		self.sendButton = wx.Button(panel, label='Send')
 		self.sendButton.Bind(wx.EVT_BUTTON, self.OnSend)
-		self.uploadImageButton = wx.Button(panel, label='Attach Image')
-		self.uploadImageButton.Bind(wx.EVT_BUTTON, self.onUploadImage)
-
-		hboxButtons = wx.BoxSizer(wx.HORIZONTAL)
-		hboxButtons.Add(self.uploadImageButton, 1, wx.EXPAND | wx.RIGHT, 1)
-		hboxButtons.Add(self.sendButton, 1, wx.EXPAND)
 
 		vbox = wx.BoxSizer(wx.VERTICAL)
 		vbox.Add(self.response, 7, wx.EXPAND | wx.ALL, 5)
 		vbox.Add(self.prompt, 2, wx.EXPAND | wx.LEFT | wx.RIGHT, 5)
-		vbox.Add(hboxButtons, 1, wx.EXPAND | wx.ALL, 5)
+		vbox.Add(self.sendButton, 1, wx.EXPAND | wx.ALL, 5)
 		panel.SetSizer(vbox)
 		self.Maximize(True)
 		self.modelList.SetFocus()
+
+	def setStatus(self, text):
+			self.SetStatusText(text)
 
 	def clearLast(self, event):
 		if len(self.model.messages)<2: return
@@ -164,8 +163,11 @@ class ChatWindow(wx.Frame):
 		dialog.Destroy()
 
 	def OnDeleteModel(self, event):
-		self.model.client.delete(self.model.name)
-		self.refreshModels()
+		with wx.MessageDialog(self, f"Are you sure you want to delete {self.model.name}?", 'Delete', wx.YES_NO|wx.ICON_QUESTION) as dlg:
+			dlg.SetYesNoLabels("Yes", "No")
+			if dlg.ShowModal() == wx.ID_YES:
+				self.model.client.delete(self.model.name)
+				self.refreshModels()
 
 	def OnNewChat(self, event):
 		self.response.SetValue("")
@@ -179,7 +181,7 @@ class ChatWindow(wx.Frame):
 			wx.TheClipboard.Close()
 
 	def onSelectModel(self, event=None):
-		self.model.name = self.modelList.GetString(self.modelList.GetSelection())
+		self.model.setModel(self.modelList.GetString(self.modelList.GetSelection()))
 
 	def SetupAccelerators(self):
 		shortcuts = {
@@ -197,16 +199,16 @@ class ChatWindow(wx.Frame):
 
 	def FocusOnPrompt(self, event):
 		self.prompt.SetFocus()
-		
+
+	def onStopGeneration(self):
+		play("receive.wav")
+		self.sendButton.SetLabel("Send")
+
 	def OnSend(self, event):
 
 		def processMessage(message):
 			play("send.wav")
-			self.model.ask(message, self.response, onStopGeneration)
-	
-		def onStopGeneration():
-			play("receive.wav")
-			self.sendButton.SetLabel("Send")
+			self.model.ask(message, self)
 
 		if not self.model.generate:
 			message = self.prompt.GetValue()
@@ -229,7 +231,7 @@ class ChatWindow(wx.Frame):
 				self.refreshChat(messages)
 
 	def onUploadImage(self,e):
-		with wx.FileDialog(self, "Open", "", "", wildcard="Image files (*.jpg;*.jpeg;*.png)|*.jpg;*.jpeg;*.png", style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as dlg:
+		with wx.FileDialog(self, "Choose an image", wildcard="Image files (*.jpg;*.jpeg;*.png)|*.jpg;*.jpeg;*.png", style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as dlg:
 			if dlg.ShowModal() == wx.ID_CANCEL: return
 			filename = dlg.GetFilename()
 			dirname = dlg.GetDirectory()
