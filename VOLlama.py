@@ -8,6 +8,7 @@ from Settings import load_settings, save_settings
 from CopyDialog import CopyDialog
 import codecs
 import json
+from Speech import Speech
 
 def playSD(file):
 	p = os.path.join(os.path.dirname(__file__), file)
@@ -22,6 +23,7 @@ class ChatWindow(wx.Frame):
 		super(ChatWindow, self).__init__(parent, title=title, size=(1920,1080))
 		self.settings = load_settings()
 		print(self.settings.to_dict())
+		self.speech = Speech()
 		self.model = Model(host=self.settings.host)
 		self.model.setSystem(self.settings.system)
 		self.InitUI()
@@ -198,9 +200,11 @@ class ChatWindow(wx.Frame):
 		self.modelList.SetFocus()
 
 	def FocusOnPrompt(self, event):
+		self.speech.stop()
 		self.prompt.SetFocus()
 
 	def onStopGeneration(self):
+		self.speech.speak(self.model.messages[-1]['content'])
 		play("receive.wav")
 		self.sendButton.SetLabel("Send")
 
