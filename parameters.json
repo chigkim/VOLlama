@@ -1,26 +1,58 @@
+dynatemp_range: Dynamic temperature range (default: 0.0, 0.0 = disabled).
+dynatemp_exponent: Dynamic temperature exponent (default: 1.0).
+n_keep: Specify the number of tokens from the prompt to retain when the context size is exceeded and tokens need to be discarded. By default, this value is set to 0 (meaning no tokens are kept). Use -1 to retain all tokens from the prompt.
+penalize_nl: Penalize newline tokens when applying the repeat penalty (default: true).
+	#min_p:0.05
+	#The minimum probability for a token to be considered, relative to the probability of the most likely token
+penalty_prompt: This will replace the prompt for the purpose of the penalty evaluation. Can be either null, a string or an array of numbers representing tokens (default: null = use the original prompt).
+grammar: Set grammar for grammar-based sampling (default: no grammar)
+ignore_eos: Ignore end of stream token and continue generating (default: false).
+logit_bias: Modify the likelihood of a token appearing in the generated text completion. For example, use "logit_bias": [[15043,1.0]] to increase the likelihood of the token 'Hello', or "logit_bias": [[15043,-1.0]] to decrease its likelihood. Setting the value to false, "logit_bias": [[15043,false]] ensures that the token Hello is never produced (default: []).
+n_probs: If greater than 0, the response also contains the probabilities of top N tokens for each generated token (default: 0)
+slot_id: Assign the completion task to an specific slot. If is -1 the task will be assigned to a Idle slot (default: -1)
+cache_prompt: Save the prompt and generation for avoid reprocess entire prompt if a part of this isn't change (default: false)
+
 {
 	#"temperature": 0.8,
+	#Increasing the temperature will make the model answer more creatively.
 	#"top_k": 40,
+	#Reduces the probability of generating nonsense. A higher value (e.g. 100) will give more diverse answers, while a lower value (e.g. 10) will be more conservative.
 	#"top_p": 0.9,
+	 #Works together with top-k. A higher value (e.g., 0.95) will lead to more diverse text, while a lower value (e.g., 0.5) will generate more focused and conservative text.
 	#"typical_p": 0.7,
 	#"num_predict": 128,
+	#Maximum number of tokens to predict when generating text. -1 = infinite generation, -2 = fill context
 	#"num_ctx": 2048,
+	#Sets the size of the context window used to generate the next token. (Default: 2048)
 	#"num_keep": 5,
 	#"repeat_last_n": 64,
+	#Sets how far back for the model to look back to prevent repetition. 0 = disabled, -1 = num_ctx
 	#"repeat_penalty": 1.1,
-	#"presence_penalty": 1.5,
-	#"frequency_penalty": 1.0,
+	#Sets how strongly to penalize repetitions. A higher value (e.g., 1.5) will penalize repetitions more strongly, while a lower value (e.g., 0.9) will be more lenient.
+	#"presence_penalty": 0.0,
+	#Repeat alpha presence penalty 0.0 = disabled).
+	#"frequency_penalty": 0.0,
+	#Repeat alpha frequency penalty 0.0 = disabled
 	#"seed": 0,
+	#Sets the random number seed to use for generation. Setting this to a specific number will make the model generate the same text for the same prompt.
 	#"tfs_z": 1.0,
+	Tail free sampling is used to reduce the impact of less probable tokens from the output. A higher value (e.g., 2.0) will reduce the impact more, while a value of 1.0 disables this setting.
 	#"mirostat": 0,
-	#"mirostat_tau": 5.0,
+	#Enable Mirostat sampling for controlling perplexity. (default: 0, 0 = disabled, 1 = Mirostat, 2 = Mirostat 2.0)
 	#"mirostat_eta": 0.1,
+	#Influences how quickly the algorithm responds to feedback from the generated text. A lower learning rate will result in slower adjustments, while a higher learning rate will make the algorithm more responsive. (Default: 0.1)
+	#"mirostat_tau": 5.0,
+	#Controls the balance between coherence and diversity of the output. A lower value will result in more focused and coherent text.
+
 	#"penalize_newline": true,
 	#"stop": ["\n", "user:"],
-	#"numa": false,
+	#Sets the stop sequences to use. When this pattern is encountered the LLM will stop generating text and return.
+		#"numa": false,
 	#"num_batch": 2,
 	#"num_gqa": 1,
+	#The number of GQA groups in the transformer layer. Required for some models.
 	#"num_gpu": 1,
+	#number of layers to send to the GPU(s). On macOS it defaults to 1 to enable metal support, 0 to disable.
 	#"main_gpu": 0,
 	#"low_vram": false,
 	#"f16_kv": true,
@@ -31,4 +63,5 @@
 	#"rope_frequency_base": 1.1,
 	#"rope_frequency_scale": 0.8,
 	#"num_thread": 8
+	#Sets the number of threads to use during computation. By default, Ollama will detect this for optimal performance. It is recommended to set this value to the number of physical CPU cores your system has (as opposed to the logical number of cores).
 }
