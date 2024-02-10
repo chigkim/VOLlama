@@ -51,6 +51,8 @@ class ChatWindow(wx.Frame):
 		self.speakResponse = chatMenu.Append(wx.ID_ANY, "Speak Response with System Voice", kind=wx.ITEM_CHECK)
 		self.speakResponse.Check(self.settings.speakResponse)
 		self.Bind(wx.EVT_MENU, self.onToggleSpeakResponse, self.speakResponse)
+		self.configSpeech = chatMenu.Append(wx.ID_ANY, "Configure Voice")
+		self.Bind(wx.EVT_MENU, self.speech.present_voice_rate_dialog, self.configSpeech)
 		exitMenu = chatMenu.Append(wx.ID_EXIT)
 		self.Bind(wx.EVT_MENU, self.OnExit, exitMenu)
 		optionMenu= wx.Menu()
