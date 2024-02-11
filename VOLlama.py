@@ -213,7 +213,6 @@ class ChatWindow(wx.Frame):
 		self.prompt.SetFocus()
 
 	def onStopGeneration(self):
-		if self.speakResponse.IsChecked(): self.speech.speak(self.model.messages[-1]['content'])
 		play("receive.wav")
 		self.sendButton.SetLabel("Send")
 

@@ -2,6 +2,7 @@ from ollama import Client
 import wx
 from Utils import displayError
 from pathlib import Path
+import re
 
 class Model:	
 	def __init__(self, name="neural-chat", host="http://localhost:11434"):
@@ -40,9 +41,15 @@ class Model:
 			message = ""
 			wx.CallAfter(window.response.AppendText, self.name[:self.name.index(":")].capitalize() + ": ")
 			self.generate = True
+			sentence = ""
 			for chunk in response:
 				chunk = chunk['message']['content']
 				message += chunk
+				if window.speakResponse.IsChecked():
+					sentence += chunk
+					if re.search(r'[\.\?!\n]\s*$', sentence):
+						window.speech.speak(sentence)
+						sentence = ""
 				wx.CallAfter(window.response.AppendText, chunk)
 				if not self.generate: break
 			wx.CallAfter(window.response.AppendText, "\n")
