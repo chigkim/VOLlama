@@ -5,3 +5,4 @@ soundfile
 wxpython
 numpy
 appdirs
+PyWin32; sys_platform == 'win32'

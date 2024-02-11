@@ -1,6 +1,10 @@
 # Change log
 
-* Attach image for vision-language model like Llava
+* Checkbox Speak response in chat menu
+* Stop speak and focus to prompt: esc
+* Configure voice (Windows only)
+* Confirmation before delete a model.
+* Attach image: Control(Command)+I
 * Create multiline prompt with Control(Command)+Enter
 * Set system message in advance menu
 * Delete model  in advance menu
