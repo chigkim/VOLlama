@@ -1,5 +1,7 @@
 import platform
+import queue
 import wx
+
 class SpeechDialog(wx.Dialog):
 	def __init__(self, parent, title, voices, current_voice, rate):
 		super(SpeechDialog, self).__init__(parent, title=title, size=(250, 200))
@@ -29,12 +31,16 @@ class SpeechDialog(wx.Dialog):
 class Speech:
 	def __init__(self):
 		self.os = platform.system()
+		self.queue = queue.Queue()
 		self.synth = self.setup_synth()
+		self.is_speaking = False
 
 	def setup_synth(self):
 		if self.os == 'Darwin':
 			from AppKit import NSSpeechSynthesizer
-			return NSSpeechSynthesizer.alloc().init()
+			synth = NSSpeechSynthesizer.alloc().init()
+			synth.setDelegate_(self)
+			return synth
 		elif self.os == 'Windows':
 			import win32com.client
 			return win32com.client.Dispatch("SAPI.SpVoice")
@@ -50,10 +56,22 @@ class Speech:
 			return self.synth.Voice.GetDescription()
 
 	def speak(self, text):
-		if self.os == 'Darwin':
-			self.synth.startSpeakingString_(text)
-		elif self.os == 'Windows':
+		if self.os == 'Windows':
 			self.synth.Speak(text,1)
+		elif self.os == 'Darwin':
+			self.queue.put(text)
+			if not self.is_speaking:
+				self._start_next_speech()
+
+	def _start_next_speech(self):
+		if not self.queue.empty():
+			text = self.queue.get()
+			self.is_speaking = True
+			self.synth.startSpeakingString_(text)
+
+	def speechSynthesizer_didFinishSpeaking_(self, sender, finishedSpeaking):
+		self.is_speaking = False
+		self._start_next_speech()
 
 	def stop(self):
 		if self.os == 'Darwin':
