@@ -6,3 +6,4 @@ wxpython
 numpy
 appdirs
 PyWin32; sys_platform == 'win32'
+PyObjC; sys_platform == 'darwin'
