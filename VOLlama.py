@@ -208,7 +208,7 @@ class ChatWindow(wx.Frame):
 	def FocusOnModelList(self, event):
 		self.modelList.SetFocus()
 
-	def FocusOnPrompt(self, event):
+	def FocusOnPrompt(self, event=None):
 		self.model.generate = False
 		self.speech.stop()
 		self.prompt.SetFocus()
@@ -231,7 +231,7 @@ class ChatWindow(wx.Frame):
 				self.sendButton.SetLabel("Stop")
 				threading.Thread(target=processMessage, args=(message,)).start()
 		else:
-			self.model.generate = False
+			self.FocusOnPrompt()
 
 	def onOpen(self,e):
 		with wx.FileDialog(self, "Open", "", "", "*.json", style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as dlg:

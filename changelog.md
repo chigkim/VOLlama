@@ -1,7 +1,8 @@
 # Change log
 
 * Checkbox Speak response in chat menu
-* Stop speak and focus to prompt: esc
+* Start speaking during generation
+* ESC: stop generating and speaking and focus to prompt
 * Configure voice (Windows only)
 * Confirmation before delete a model.
 * Attach image: Control(Command)+I

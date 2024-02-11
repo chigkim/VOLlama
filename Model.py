@@ -48,7 +48,8 @@ class Model:
 				if window.speakResponse.IsChecked():
 					sentence += chunk
 					if re.search(r'[\.\?!\n]\s*$', sentence):
-						wx.CallAfter(window.speech.speak, sentence)
+						if sentence.strip():
+							wx.CallAfter(window.speech.speak, sentence)
 						sentence = ""
 				wx.CallAfter(window.response.AppendText, chunk)
 				if not self.generate: break

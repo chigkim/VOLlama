@@ -74,6 +74,9 @@ class Speech:
 		self._start_next_speech()
 
 	def stop(self):
+		while not self.queue.empty():
+			self.queue.get()
+			self.queue.task_done()
 		if self.os == 'Darwin':
 			self.synth.stopSpeaking()
 		elif self.os == 'Windows':
