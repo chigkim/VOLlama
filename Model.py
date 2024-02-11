@@ -37,12 +37,14 @@ class Model:
 				if 'images' in self.messages[i]: self.messages[i].pop('images')
 		try:
 			self.messages.append(message)
+			wx.CallAfter(window.setStatus, "Reading...")
 			response = self.client.chat(model=self.name, messages=self.messages, stream=True)
 			message = ""
 			wx.CallAfter(window.response.AppendText, self.name[:self.name.index(":")].capitalize() + ": ")
 			self.generate = True
 			sentence = ""
 			for chunk in response:
+				data = chunk
 				chunk = chunk['message']['content']
 				message += chunk
 				if window.speakResponse.IsChecked():
@@ -51,9 +53,23 @@ class Model:
 						if sentence.strip():
 							wx.CallAfter(window.speech.speak, sentence)
 						sentence = ""
+				wx.CallAfter(window.setStatus, "Typing...")
 				wx.CallAfter(window.response.AppendText, chunk)
 				if not self.generate: break
 			wx.CallAfter(window.response.AppendText, "\n")
+			print(data)
+			div = 1000000000
+			if 'total_duration' in data:
+				total = data['total_duration']/div
+				load = data['load_duration']/div
+				prompt_count = data['prompt_eval_count'] if 'prompt_eval_count' in data else 0
+				prompt_duration = data['prompt_eval_duration']/div
+				gen_count = data['eval_count']
+				gen_duration = data['eval_duration']/div
+				stat = f"Total: {total:.2f} secs, Load: {load:.2f} secs, Prompt: {prompt_count} tokens ({prompt_count/prompt_duration:.2f} t/s), Output: {gen_count} tokens ({gen_count/gen_duration:.2f} t/s)"
+				wx.CallAfter(window.setStatus, stat)
+			else:
+				wx.CallAfter(window.setStatus, "Interrupted.")
 			self.messages.append({"role":"assistant", "content":message.strip()})
 		except Exception as e:
 			self.messages.pop()

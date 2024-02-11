@@ -1,5 +1,7 @@
 # Change log
 
+* Status bar and stats
+* Check for update
 * Fixed message order.
 * Checkbox Speak response in chat menu
 * Start speaking during generation
