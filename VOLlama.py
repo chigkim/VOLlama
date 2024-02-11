@@ -1,3 +1,4 @@
+version = 6
 import wx
 import threading
 import sounddevice as sd
@@ -9,7 +10,7 @@ from CopyDialog import CopyDialog
 import codecs
 import json
 from Speech import Speech
-
+from Update import check_update
 def playSD(file):
 	p = os.path.join(os.path.dirname(__file__), file)
 	data, fs = sf.read(p, dtype='float32')  
@@ -29,6 +30,7 @@ class ChatWindow(wx.Frame):
 		self.InitUI()
 		self.Centre()
 		self.Show()
+		threading.Thread(target=check_update, args=(version,)).start()
 
 	def InitUI(self):
 		self.CreateStatusBar()
