@@ -209,6 +209,7 @@ class ChatWindow(wx.Frame):
 		self.modelList.SetFocus()
 
 	def FocusOnPrompt(self, event):
+		self.model.generate = False
 		self.speech.stop()
 		self.prompt.SetFocus()
 
