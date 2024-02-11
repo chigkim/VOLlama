@@ -250,6 +250,7 @@ class ChatWindow(wx.Frame):
 			dirname = dlg.GetDirectory()
 			file = os.path.join(dirname, filename)
 			self.model.image = file
+			self.prompt.SetFocus()
 
 	def onSave(self, e):
 		name = self.model.name[:self.model.name.index(":")].capitalize()

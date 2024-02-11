@@ -1,5 +1,6 @@
 # Change log
 
+* Fixed message order.
 * Checkbox Speak response in chat menu
 * Start speaking during generation
 * ESC: stop generating and speaking and focus to prompt

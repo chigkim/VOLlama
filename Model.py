@@ -36,8 +36,8 @@ class Model:
 			for i in range(len(self.messages)):
 				if 'images' in self.messages[i]: self.messages[i].pop('images')
 		try:
-			response = self.client.chat(model=self.name, messages=self.messages, stream=True)
 			self.messages.append(message)
+			response = self.client.chat(model=self.name, messages=self.messages, stream=True)
 			message = ""
 			wx.CallAfter(window.response.AppendText, self.name[:self.name.index(":")].capitalize() + ": ")
 			self.generate = True
@@ -56,6 +56,7 @@ class Model:
 			wx.CallAfter(window.response.AppendText, "\n")
 			self.messages.append({"role":"assistant", "content":message.strip()})
 		except Exception as e:
+			self.messages.pop()
 			displayError(e)
 		finally:
 			self.generate = False
