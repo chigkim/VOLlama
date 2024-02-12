@@ -1,34 +1,59 @@
-{
-	#"temperature": 0.8,
-	#"top_k": 40,
-	#"top_p": 0.9,
-	#"typical_p": 0.7,
-	#"num_predict": 128,
-	#"num_ctx": 2048,
-	#"num_keep": 5,
-	#"repeat_last_n": 64,
-	#"repeat_penalty": 1.1,
-	#"presence_penalty": 1.5,
-	#"frequency_penalty": 1.0,
-	#"seed": 0,
-	#"tfs_z": 1.0,
-	#"mirostat": 0,
-	#"mirostat_tau": 5.0,
-	#"mirostat_eta": 0.1,
-	#"penalize_newline": true,
-	#"stop": ["\n", "user:"],
-	#"numa": false,
-	#"num_batch": 2,
-	#"num_gqa": 1,
-	#"num_gpu": 1,
-	#"main_gpu": 0,
-	#"low_vram": false,
-	#"f16_kv": true,
-	#"vocab_only": false,
-	#"use_mmap": true,
-	#"use_mlock": false,
-	#"embedding_only": false,
-	#"rope_frequency_base": 1.1,
-	#"rope_frequency_scale": 0.8,
-	#"num_thread": 8
-}
+	"n_predict":-1,
+	#Maximum number of tokens to predict when generating text.
+	# -1=fill context, -2=infinite generation
+	"temperature":0.8,
+	# Increasing the temperature will make the model answer more creatively.
+	# Range: 0.0-2.0
+	"repeat_penalty":1.1,
+	# higher value will penalize repetitions more strongly.
+	# Range: 0.0-2.0
+	"repeat_last_n":64,
+	#Sets how far back for the model to look back to prevent repetition.
+	# 0=disabled, -1 = num_ctx
+	"top_k":40,
+	#Reduces the probability of generating nonsense.
+	# Range: -1-100
+	"top_p":0.9,
+	# Works together with top-k. A higher value will lead to more diverse text, while a lower value (will generate more focused and conservative text.
+	# Range: 0.0-1.0
+	"tfs_z":1.0,
+	# Reduces the impact of less probable tokens from the output. A higher value will reduce the impact more.
+	# 0.0-1.0
+	"typical_p":1.0,
+	# Range: 0.0-1.0
+	"presence_penalty":0.0,
+	# Range: 0.0-1.0
+	"frequency_penalty":0.0,
+	# Range: 0.0-1.0
+	"mirostat":0,
+	# 0=disable, 1=v1, 2=v2
+	"mirostat_tau":5.0,
+	# Controls the balance between coherence and diversity of the output. A lower value will result in more focused and coherent text.
+	# Range: 0.0-10.0
+	"mirostat_eta":0.1,
+	# Influences how quickly the algorithm responds to feedback from the generated text.
+	# 0.0-1.0
+	"n_keep":0,
+	"penalize_nl":True,
+	"stop":[]
+	# When this pattern is encountered the LLM will stop generating text and return.
+	"seed":-1,
+	# Sets the random number seed to use for generation. Setting this to a specific number will make the model generate the same text for the same prompt. (Default: 0)                                                                                       | int        | seed 42              |
+
+// Runner options which must be set when the model is loaded into memory
+	UseNUMA:False            bool    `json:"numa,omitempty"`
+	"num_ctx":2048             int     `json:"num_ctx,omitempty"`
+	NumBatch:512           int     `json:"num_batch,omitempty"`
+	"num_gqa":1
+	"num_gpu":-1
+	MainGPU            int     `json:"main_gpu,omitempty"`
+	LowVRAM:False            bool    `json:"low_vram,omitempty"`
+	F16KV:True              bool    `json:"f16_kv,omitempty"`
+	LogitsAll          bool    `json:"logits_all,omitempty"`
+	VocabOnly          bool    `json:"vocab_only,omitempty"`
+	UseMMap:True            bool    `json:"use_mmap,omitempty"`
+	UseMLock:False           bool    `json:"use_mlock,omitempty"`
+	EmbeddingOnly:True      bool    `json:"embedding_only,omitempty"`
+	RopeFrequencyBase:10000.0  float32 `json:"rope_frequency_base,omitempty"`
+	RopeFrequencyScale:1.0 float32 `json:"rope_frequency_scale,omitempty"`
+	"num_thread":0          int     `json:"num_thread,omitempty"`
