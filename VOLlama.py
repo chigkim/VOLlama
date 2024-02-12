@@ -58,6 +58,7 @@ class ChatWindow(wx.Frame):
 
 		exitMenu = chatMenu.Append(wx.ID_EXIT)
 		self.Bind(wx.EVT_MENU, self.OnExit, exitMenu)
+
 		optionMenu= wx.Menu()
 		setSystemMenu = optionMenu.Append(wx.ID_ANY, "Set System Message...\tCTRL+ALT+S")
 		self.Bind(wx.EVT_MENU, self.setSystem, setSystemMenu)
@@ -71,7 +72,7 @@ class ChatWindow(wx.Frame):
 		self.Bind(wx.EVT_MENU, self.setHost, hostMenu)
 		menuBar = wx.MenuBar()
 		menuBar.Append(chatMenu,"&Chat")
-		menuBar.Append(optionMenu,"&Choice")
+		menuBar.Append(optionMenu,"&Advance")
 		self.SetMenuBar(menuBar)
 
 		self.toolbar = self.CreateToolBar(wx.TB_HORIZONTAL | wx.NO_BORDER | wx.TB_FLAT)
