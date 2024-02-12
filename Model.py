@@ -4,6 +4,7 @@ from Utils import displayError
 from pathlib import Path
 import re
 import os
+from Parameters import get_parameters
 
 class Model:	
 	def __init__(self, name="neural-chat", host="http://localhost:11434"):
@@ -13,6 +14,10 @@ class Model:
 		self.name = name
 		self.generate = False
 		self.image = None
+		self.parameters = None
+		
+	def load_parameters(self):
+		self.parameters = get_parameters()
 
 	def setHost(self, host):
 		self.host = host
@@ -38,8 +43,7 @@ class Model:
 				if 'images' in self.messages[i]: self.messages[i].pop('images')
 		try:
 			self.messages.append(message)
-			wx.CallAfter(window.setStatus, "Reading...")
-			response = self.client.chat(model=self.name, messages=self.messages, stream=True)
+			response = self.client.chat(model=self.name, messages=self.messages, stream=True, options=self.parameters)
 			message = ""
 			wx.CallAfter(window.response.AppendText, self.name[:self.name.index(":")].capitalize() + ": ")
 			self.generate = True
@@ -54,11 +58,9 @@ class Model:
 						if sentence.strip():
 							wx.CallAfter(window.speech.speak, sentence)
 						sentence = ""
-				wx.CallAfter(window.setStatus, "Typing...")
 				wx.CallAfter(window.response.AppendText, chunk)
 				if not self.generate: break
 			wx.CallAfter(window.response.AppendText, os.linesep)
-			print(data)
 			div = 1000000000
 			if 'total_duration' in data:
 				total = data['total_duration']/div

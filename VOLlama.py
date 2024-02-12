@@ -11,6 +11,8 @@ import codecs
 import json
 from Speech import Speech
 from Update import check_update
+from Parameters import ParametersDialog
+
 def playSD(file):
 	p = os.path.join(os.path.dirname(__file__), file)
 	data, fs = sf.read(p, dtype='float32')  
@@ -58,6 +60,8 @@ class ChatWindow(wx.Frame):
 		optionMenu= wx.Menu()
 		setSystemMenu = optionMenu.Append(wx.ID_ANY, "Set System Message...\tCTRL+ALT+S")
 		self.Bind(wx.EVT_MENU, self.setSystem, setSystemMenu)
+		parametersMenu = optionMenu.Append(wx.ID_ANY, "Set Generation Parameters...\tCTRL+ALT+P")
+		self.Bind(wx.EVT_MENU, self.setParameters, parametersMenu)
 		copyModelMenu = optionMenu.Append(wx.ID_ANY, "Copy Model...")
 		self.Bind(wx.EVT_MENU, self.OnCopyModel, copyModelMenu)
 		deleteModelMenu = optionMenu.Append(wx.ID_ANY, "Delete Model")
@@ -66,7 +70,7 @@ class ChatWindow(wx.Frame):
 		self.Bind(wx.EVT_MENU, self.setHost, hostMenu)
 		menuBar = wx.MenuBar()
 		menuBar.Append(chatMenu,"&Chat")
-		menuBar.Append(optionMenu,"&Advance")
+		menuBar.Append(optionMenu,"&Choice")
 		self.SetMenuBar(menuBar)
 
 		self.toolbar = self.CreateToolBar(wx.TB_HORIZONTAL | wx.NO_BORDER | wx.TB_FLAT)
@@ -152,7 +156,7 @@ class ChatWindow(wx.Frame):
 		self.settings.speakResponse = self.speakResponse.IsChecked()
 		save_settings()
 
-	def setSystem(self, event):
+	def setSystem(setSystemelf, event):
 		dlg = wx.TextEntryDialog(self, "Enter the system message:", "System", value=self.settings.system)
 		if dlg.ShowModal() == wx.ID_OK:
 			system = dlg.GetValue()
@@ -161,6 +165,12 @@ class ChatWindow(wx.Frame):
 			save_settings()
 		dlg.Destroy()
 
+	def setParameters(self, e):
+		with ParametersDialog(self, 'Generation Parameters') as dialog:
+			if dialog.ShowModal() == wx.ID_OK:
+				dialog.save()
+				self.model.load_parameters()
+	
 	def OnCopyModel(self, event):
 		dialog = CopyDialog(self, title="Copy Model")
 		dialog.name.SetValue("copy-"+self.model.name)
