@@ -3,6 +3,7 @@ import wx
 from Utils import displayError
 from pathlib import Path
 import re
+import os
 
 class Model:	
 	def __init__(self, name="neural-chat", host="http://localhost:11434"):
@@ -56,7 +57,7 @@ class Model:
 				wx.CallAfter(window.setStatus, "Typing...")
 				wx.CallAfter(window.response.AppendText, chunk)
 				if not self.generate: break
-			wx.CallAfter(window.response.AppendText, "\n")
+			wx.CallAfter(window.response.AppendText, os.linesep)
 			print(data)
 			div = 1000000000
 			if 'total_duration' in data:

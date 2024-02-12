@@ -111,17 +111,15 @@ class ChatWindow(wx.Frame):
 		self.refreshChat(self.model.messages)
 
 	def refreshChat(self, messages):
-		text = ""
 		if len(self.model.messages)<2:
-			self.response.SetValue(text)
+			self.response.Clear()
 			return
-		start = 0
-		if messages[0]['role'] == 'system':
-			start = 1
-		for i in range(start,len(messages),2):
-			text += f"You: {messages[i]['content']}\n"
-			text += f"{self.model.name[:self.model.name.index(':')].capitalize()}: {messages[i+1]['content']}\n"
-		self.response.SetValue(text)
+		start = 1 if messages[0]['role'] == 'system' else 0
+		for message in messages[start:]:
+			role = self.model.name[:self.model.name.index(':')].capitalize() if message['role'] == 'assistant' else "You"
+			text = f"{role}: {message['content']}"
+			self.response.AppendText(text)
+			self.response.AppendText(os.linesep)
 
 	def refreshModels(self):
 		self.modelList.SetItems([])
@@ -183,9 +181,10 @@ class ChatWindow(wx.Frame):
 				self.refreshModels()
 
 	def OnNewChat(self, event):
-		self.response.SetValue("")
+		self.FocusOnPrompt()
 		self.model.messages = []
 		self.model.setSystem(self.settings.system)
+		self.response.Clear()
 
 	def OnCopyMessage(self, event):
 		message = self.model.messages[-1]['content'].strip()
