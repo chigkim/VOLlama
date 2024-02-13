@@ -14,7 +14,7 @@ class Model:
 		self.name = name
 		self.generate = False
 		self.image = None
-		self.parameters = None
+		self.load_parameters()
 		
 	def load_parameters(self):
 		self.parameters = get_parameters()

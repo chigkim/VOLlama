@@ -1,62 +1,85 @@
 import appdirs
 import os
 import json
-
+import threading
 class DotDict:
-	def __init__(self, dictionary=None):
+	def __init__(self, dictionary=None, parent=None):
+		self.__dict__["_parent"] = parent  # Reference to the SettingsManager for autosave.
 		if dictionary is None:
 			dictionary = {}
 		for key, value in dictionary.items():
-			if isinstance(value, dict):
-				value = DotDict(value)
+			# Directly assign the value without converting it to DotDict.
 			self.__dict__[key] = value
 
 	def __setattr__(self, key, value):
-		if isinstance(value, dict):
-			value = DotDict(value)
+		# Directly assign the value without checking for dict type to convert.
 		self.__dict__[key] = value
+		if "_parent" in self.__dict__ and self._parent:
+			self._parent.save_settings()
 
 	def to_dict(self):
-		"""Recursively convert DotDict objects to dictionaries."""
 		dict_ = {}
 		for key, value in self.__dict__.items():
-			if isinstance(value, DotDict):
-				dict_[key] = value.to_dict()
-			else:
-				dict_[key] = value
+			if key == "_parent":
+				continue  # Skip the parent reference when converting to dict.
+			# Directly assign the value without converting from DotDict to dict.
+			dict_[key] = value
 		return dict_
 
-app_name = 'VOLlama'
-company_name = None
-config_dir = appdirs.user_config_dir(app_name, company_name)
-settings_file_path = os.path.join(config_dir, 'settings.json')
-os.makedirs(config_dir, exist_ok=True)
+class SettingsManager:
+	_instance = None
+	_lock = threading.Lock()
+
+	def __new__(cls):
+		with cls._lock:
+			if cls._instance is None:
+				cls._instance = super(SettingsManager, cls).__new__(cls)
+				cls._instance._initialized = False
+			return cls._instance
+
+	def __init__(self):
+		if self._initialized: return
+		self._initialized = True
+		self.app_name = 'VOLlama'
+		self.company_name = None
+		self.config_dir = appdirs.user_config_dir(self.app_name, self.company_name)
+		self.settings_file_path = os.path.join(self.config_dir, 'settings.json')
+		os.makedirs(self.config_dir, exist_ok=True)
+		self.settings = self.load_settings()
+
+	def save_settings(self):
+		settings_dict = self.settings.to_dict()
+		with open(self.settings_file_path, 'w') as file:
+			json.dump(settings_dict, file, indent='\t')
+
+	def load_settings(self):
+		default_dict = {
+			'host': 'http://localhost:11434',
+			'system': "",
+			'speakResponse': False,
+			'voice': 'unknown',
+			'rate': 0.0
+		}
+		try:
+			with open(self.settings_file_path, 'r') as file:
+				settings_dict = json.load(file)
+				settings = DotDict(settings_dict, parent=self)
+				# Check for differences and update if necessary.
+				different = set(default_dict.keys()) != set(settings_dict.keys())
+				if different:
+					for key, value in default_dict.items():
+						if key not in settings_dict:
+							setattr(settings, key, value)  # Use setattr to ensure autosave is triggered.
+		except Exception as e:
+			print(e)
+			settings = DotDict(default_dict, parent=self)
+			self.save_settings()  # Ensure defaults are saved if the file is missing or corrupted.
+		return settings
+
+settings_manager = SettingsManager()  # This will be the shared instance.
+
+def get_settings():
+	return settings_manager.settings
 
 def save_settings():
-	settings_dict = settings.to_dict()
-	with open(settings_file_path, 'w') as file:
-		json.dump(settings_dict, file, indent='\t')
-
-def load_settings():
-	global settings
-	try:
-		with open(settings_file_path, 'r') as file:
-			settings_dict = json.load(file)
-			different = True if default_dict.keys() != settings_dict.keys() else False
-			if different:
-				for key in default_dict:
-					if key not in settings_dict: settings_dict[key] = default_dict[key]
-			settings = DotDict(settings_dict)
-			if different: save_settings()
-	except Exception as e: print(e)
-	return settings
-
-settings = {}
-default_dict = {
-	'host':'http://localhost:11434',
-	'system':"",
-	'speakResponse':False,
-	'voice': 'unknown',
-	'rate': 0.0
-}
-default= DotDict(default_dict)
+	settings_manager.save_settings()

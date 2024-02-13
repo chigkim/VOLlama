@@ -1,11 +1,12 @@
 import wx
 import json
+from Settings import get_settings
+import os
 
 class ParametersDialog(wx.Dialog):
 	def __init__(self, parent, title):
 		super(ParametersDialog, self).__init__(parent, title=title, size=(400, 600))
-		with open('parameters.json') as file:
-			self.parameters = json.load(file)
+		self.settings = get_settings()
 		self.controls = {}  # Store controls here to access them later
 		self.InitUI()
 
@@ -17,7 +18,7 @@ class ParametersDialog(wx.Dialog):
 		scroll_area.SetScrollbars(1, 1, 1, 1)
 		scroll_sizer = wx.BoxSizer(wx.VERTICAL)
 
-		for key, val in self.parameters.items():
+		for key, val in self.settings.parameters.items():
 			hbox = wx.BoxSizer(wx.HORIZONTAL)
 			label = wx.StaticText(scroll_area, label=key.replace("_", " ").capitalize() + ":")
 			hbox.Add(label, 0, wx.ALL | wx.CENTER, 5)
@@ -54,29 +55,31 @@ class ParametersDialog(wx.Dialog):
 	def save(self):
 		for key, ctrl in self.controls.items():
 			if isinstance(ctrl, wx.CheckBox):
-				self.parameters[key]['value'] = ctrl.IsChecked()
+				self.settings.parameters[key]['value'] = ctrl.IsChecked()
 			else:
 				value = ctrl.GetValue()
 				# Convert value back to the appropriate type based on its original type
-				if self.parameters[key]['value'] is not None:
-					if isinstance(self.parameters[key]['value'], int):
+				if self.settings.parameters[key]['value'] is not None:
+					if isinstance(self.settings.parameters[key]['value'], int):
 						value = int(value)
-					elif isinstance(self.parameters[key]['value'], float):
+					elif isinstance(self.settings.parameters[key]['value'], float):
 						value = float(value)
-					elif isinstance(self.parameters[key]['value'], list):
+					elif isinstance(self.settings.parameters[key]['value'], list):
 						value = value.split(', ')
 						if value == ['']: value = []
-				self.parameters[key]['value'] = value
-
-		with open('parameters.json', 'w') as file:
-			json.dump(self.parameters, file, indent="\t")
+				self.settings.parameters[key]['value'] = value
+		self.settings.parameters = self.settings.parameters
 
 def get_parameters():
-	with open('parameters.json') as file:
-		parameters = json.load(file)
-		options = {}
-		for key, value in parameters.items():
-			if value['value'] == []: continue
-			options[key] = value['value']
-		return options
-		
+	settings = get_settings()
+	if not hasattr(settings, 'parameters'):
+		p = os.path.join(os.path.dirname(__file__), "default-parameters.json")
+		with open('parameters.json') as file:
+			settings.parameters = json.load(file)
+
+	options = {}
+	for key, value in settings.parameters.items():
+		if value['value'] == []: continue
+		options[key] = value['value']
+	return options
+	

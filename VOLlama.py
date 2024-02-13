@@ -5,7 +5,7 @@ import sounddevice as sd
 import soundfile as sf
 import os
 from Model import Model
-from Settings import load_settings, save_settings
+from Settings import get_settings
 from CopyDialog import CopyDialog
 import codecs
 import json
@@ -24,7 +24,7 @@ def play(file):
 class ChatWindow(wx.Frame):
 	def __init__(self, parent, title):
 		super(ChatWindow, self).__init__(parent, title=title, size=(1920,1080))
-		self.settings = load_settings()
+		self.settings = get_settings()
 		print(self.settings.to_dict())
 		self.speech = Speech()
 		self.model = Model(host=self.settings.host)
@@ -153,13 +153,11 @@ class ChatWindow(wx.Frame):
 			host = dlg.GetValue()
 			self.model.setHost(host)
 			self.settings.host = host
-			save_settings()
 			self.refreshModels()
 		dlg.Destroy()
 
 	def onToggleSpeakResponse(self, e):
 		self.settings.speakResponse = self.speakResponse.IsChecked()
-		save_settings()
 
 	def setSystem(setSystemelf, event):
 		dlg = wx.TextEntryDialog(self, "Enter the system message:", "System", value=self.settings.system)
@@ -167,7 +165,6 @@ class ChatWindow(wx.Frame):
 			system = dlg.GetValue()
 			self.model.setSystem(system)
 			self.settings.system = system
-			save_settings()
 		dlg.Destroy()
 
 	def setParameters(self, e):
