@@ -159,7 +159,7 @@ class ChatWindow(wx.Frame):
 	def onToggleSpeakResponse(self, e):
 		self.settings.speakResponse = self.speakResponse.IsChecked()
 
-	def setSystem(setSystemelf, event):
+	def setSystem(self, event):
 		dlg = wx.TextEntryDialog(self, "Enter the system message:", "System", value=self.settings.system)
 		if dlg.ShowModal() == wx.ID_OK:
 			system = dlg.GetValue()
@@ -181,7 +181,6 @@ class ChatWindow(wx.Frame):
 			name = dialog.name.GetValue()
 			modelfile = dialog.modelfile.GetValue()
 			result = self.model.client.create(name, modelfile=modelfile, stream=False)
-			print(result)
 			self.refreshModels()
 		dialog.Destroy()
 
