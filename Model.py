@@ -55,11 +55,13 @@ class Model:
 				if window.speakResponse.IsChecked():
 					sentence += chunk
 					if re.search(r'[\.\?!\n]\s*$', sentence):
-						if sentence.strip():
+						sentence = sentence.strip()
+						if sentence:
 							wx.CallAfter(window.speech.speak, sentence)
 						sentence = ""
 				wx.CallAfter(window.response.AppendText, chunk)
 				if not self.generate: break
+			if sentence and window.speakResponse.IsChecked(): wx.CallAfter(window.speech.speak, sentence)
 			wx.CallAfter(window.response.AppendText, os.linesep)
 			div = 1000000000
 			if 'total_duration' in data:

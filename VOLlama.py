@@ -70,6 +70,9 @@ class ChatWindow(wx.Frame):
 		self.Bind(wx.EVT_MENU, self.OnDeleteModel, deleteModelMenu)
 		hostMenu = optionMenu.Append(wx.ID_ANY, "Set Host...")
 		self.Bind(wx.EVT_MENU, self.setHost, hostMenu)
+		logMenu = optionMenu.Append(wx.ID_ANY, "Log\tCTRL+ALT+L")
+		self.Bind(wx.EVT_MENU, self.log, logMenu)
+		
 		menuBar = wx.MenuBar()
 		menuBar.Append(chatMenu,"&Chat")
 		menuBar.Append(optionMenu,"&Advance")
@@ -276,7 +279,10 @@ class ChatWindow(wx.Frame):
 
 	def OnExit(self, event):
 		self.Destroy()
-		
+
+	def log(self,e):
+		print(self.settings.to_dict())
+
 if __name__ == "__main__":
 	app = wx.App(False)
 	ChatWindow(None, "VOLlama")

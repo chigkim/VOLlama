@@ -69,14 +69,14 @@ class ParametersDialog(wx.Dialog):
 				self.parameters[key]['value'] = value
 
 		with open('parameters.json', 'w') as file:
-			json.dump(self.parameters, file, indent=4)
+			json.dump(self.parameters, file, indent="\t")
 
 def get_parameters():
 	with open('parameters.json') as file:
 		parameters = json.load(file)
 		options = {}
 		for key, value in parameters.items():
-			if value == []: continue
+			if value['value'] == []: continue
 			options[key] = value['value']
 		return options
 		

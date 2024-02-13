@@ -39,22 +39,24 @@ def save_settings():
 
 def load_settings():
 	global settings
-	default = settings.to_dict()
 	try:
 		with open(settings_file_path, 'r') as file:
 			settings_dict = json.load(file)
-			different = True if default.keys() != settings_dict.keys() else False
+			different = True if default_dict.keys() != settings_dict.keys() else False
 			if different:
-				for key in default:
-					if key not in settings_dict: settings_dict[key] = default[key]
+				for key in default_dict:
+					if key not in settings_dict: settings_dict[key] = default_dict[key]
 			settings = DotDict(settings_dict)
 			if different: save_settings()
 	except Exception as e: print(e)
 	return settings
 
-settings_dict = {
+settings = {}
+default_dict = {
 	'host':'http://localhost:11434',
 	'system':"",
 	'speakResponse':False,
+	'voice': 'unknown',
+	'rate': 0.0
 }
-settings = DotDict(settings_dict)
+default= DotDict(default_dict)
