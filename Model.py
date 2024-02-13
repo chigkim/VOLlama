@@ -11,7 +11,11 @@ class Model:
 		self.messages = []
 		self.name = name
 		self.generate = False
+<<<<<<< HEAD
 		self.rag = RAG(self.host, self.name)
+=======
+		self.rag = RAG(self.name, self.host)
+>>>>>>> 48128a31d794baaa59c79ebfc51f3443331af89c
 		self.image = None
 		self.folder = None
 		self.url = None
@@ -22,7 +26,11 @@ class Model:
 
 	def setModel(self, name):
 		self.name = name
+<<<<<<< HEAD
 		self.rag.setModel(self.host, name)
+=======
+		self.rag.setModel(name, self.host)
+>>>>>>> 48128a31d794baaa59c79ebfc51f3443331af89c
 
 	def setSystem(self, system):
 		if system == "": return
