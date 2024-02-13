@@ -55,6 +55,10 @@ class ChatWindow(wx.Frame):
 		self.configSpeech = chatMenu.Append(wx.ID_ANY, "Configure Voice")
 		self.Bind(wx.EVT_MENU, self.speech.present_voice_rate_dialog, self.configSpeech)
 
+		documentMenu = chatMenu.Append(wx.ID_ANY, "Attach Documents...\tCTRL+D")
+		self.Bind(wx.EVT_MENU, self.onUploadDocuments, documentMenu)
+		urlMenu = chatMenu.Append(wx.ID_ANY, "Attach an &URL...\tCTRL+U")
+		self.Bind(wx.EVT_MENU, self.onUploadURLButton, urlMenu)
 		exitMenu = chatMenu.Append(wx.ID_EXIT)
 		self.Bind(wx.EVT_MENU, self.OnExit, exitMenu)
 
@@ -76,7 +80,7 @@ class ChatWindow(wx.Frame):
 		menuBar.Append(chatMenu,"&Chat")
 		menuBar.Append(optionMenu,"&Advance")
 		self.SetMenuBar(menuBar)
-
+		
 		self.toolbar = self.CreateToolBar(wx.TB_HORIZONTAL | wx.NO_BORDER | wx.TB_FLAT)
 		self.models = []
 		self.modelList= wx.Choice(self.toolbar, choices=self.models)
@@ -195,6 +199,8 @@ class ChatWindow(wx.Frame):
 		self.model.messages = []
 		self.model.setSystem(self.settings.system)
 		self.response.Clear()
+		self.folder = None
+		self.url = None
 
 	def OnCopyMessage(self, event):
 		message = self.model.messages[-1]['content'].strip()
@@ -262,6 +268,22 @@ class ChatWindow(wx.Frame):
 			file = os.path.join(dirname, filename)
 			self.model.image = file
 			self.prompt.SetFocus()
+
+	def onUploadDocuments(self,e):
+		with wx.DirDialog(None, "Choose a folder with documents:", style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST) as dlg:
+			if dlg.ShowModal() == wx.ID_CANCEL: return
+			folder = dlg.GetPath()
+			self.model.folder = folder
+			self.setStatus("Indexing...")
+			threading.Thread(target=self.model.rag.loadFolder, args=(folder, self.setStatus)).start()
+
+	def onUploadURLButton(self, e):
+		with wx.TextEntryDialog(self, "Enter an url to index::", "URL", value="https://") as dlg:
+			if dlg.ShowModal() == wx.ID_OK:
+				url = dlg.GetValue()
+				self.model.url = url
+				self.setStatus("Indexing...")
+				threading.Thread(target=self.model.rag.loadUrl, args=(url, self.setStatus)).start()
 
 	def onSave(self, e):
 		name = self.model.name[:self.model.name.index(":")].capitalize()

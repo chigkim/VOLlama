@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import os
 from Parameters import get_parameters
+from RAG import RAG
 
 class Model:	
 	def __init__(self, name="neural-chat", host="http://localhost:11434"):
@@ -14,8 +15,11 @@ class Model:
 		self.name = name
 		self.generate = False
 		self.image = None
+		self.folder = None
+		self.url = None
 		self.load_parameters()
-		
+		self.rag = RAG(self.name, self.host)
+
 	def load_parameters(self):
 		self.parameters = get_parameters()
 
@@ -25,6 +29,7 @@ class Model:
 
 	def setModel(self, name):
 		self.name = name
+		self.rag.setModel(self.host, name)
 
 	def setSystem(self, system):
 		if system == "": return
@@ -44,7 +49,13 @@ class Model:
 		try:
 			self.messages.append(message)
 			wx.CallAfter(window.setStatus, "Reading and thinking...")
-			response = self.client.chat(model=self.name, messages=self.messages, stream=True, options=self.parameters)
+			if content.startswith("/r ") and (self.folder or self.url):
+				message['content'] = message['content'][3:]
+				self.messages.append(message)
+				response = self.rag.ask(message['content'])
+			else:
+				self.messages.append(message)
+				response = self.client.chat(model=self.name, messages=self.messages, stream=True)
 			message = ""
 			wx.CallAfter(window.response.AppendText, self.name[:self.name.index(":")].capitalize() + ": ")
 			self.generate = True
@@ -52,7 +63,8 @@ class Model:
 			for chunk in response:
 				if not sentence: wx.CallAfter(window.setStatus, "Typing...")
 				data = chunk
-				chunk = chunk['message']['content']
+				if not isinstance(chunk, str):
+					chunk = chunk['message']['content']
 				message += chunk
 				if window.speakResponse.IsChecked():
 					sentence += chunk
