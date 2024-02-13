@@ -43,12 +43,14 @@ class Model:
 				if 'images' in self.messages[i]: self.messages[i].pop('images')
 		try:
 			self.messages.append(message)
+			wx.CallAfter(window.setStatus, "Reading and thinking...")
 			response = self.client.chat(model=self.name, messages=self.messages, stream=True, options=self.parameters)
 			message = ""
 			wx.CallAfter(window.response.AppendText, self.name[:self.name.index(":")].capitalize() + ": ")
 			self.generate = True
 			sentence = ""
 			for chunk in response:
+				if not sentence: wx.CallAfter(window.setStatus, "Typing...")
 				data = chunk
 				chunk = chunk['message']['content']
 				message += chunk

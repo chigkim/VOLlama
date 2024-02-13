@@ -52,7 +52,7 @@ class Speech:
 			self.synth.speakUtterance_(utterance)
 			self.queue.task_done()
 
-	def speechSynthesizer_didFinishSpeaking_(self, sender, finishedSpeaking):
+	def speechSynthesizer_didFinishSpeechUtterance_(self, synthesizer, utterance):
 		self._start_next_speech()
 
 	def stop(self):
@@ -103,11 +103,17 @@ class Speech:
 
 	def present_voice_rate_dialog(self, e=None):
 		voices = self.get_voices()
+		if self.os == 'Darwin':
+			voices = [voice.replace("com.apple.", "") for voice in voices]
 		current_voice = self.get_current_voice()
+		if self.os == 'Darwin':
+			current_voice = current_voice.replace("com.apple.", "")
 		current_rate = str(self.get_rate())
 		dialog = SpeechDialog(None, 'Select Voice and Rate', voices, current_voice, current_rate)
 		if dialog.ShowModal() == wx.ID_OK:
 			selected_voice, selected_rate = dialog.get_selections()
+			if self.os == 'Darwin':
+				selected_voice = "com.apple."+selected_voice
 			self.set_voice(selected_voice)
 			self.set_rate(float(selected_rate))
 		dialog.Destroy()

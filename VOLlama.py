@@ -25,7 +25,6 @@ class ChatWindow(wx.Frame):
 	def __init__(self, parent, title):
 		super(ChatWindow, self).__init__(parent, title=title, size=(1920,1080))
 		self.settings = get_settings()
-		print(self.settings.to_dict())
 		self.speech = Speech()
 		self.model = Model(host=self.settings.host)
 		self.model.setSystem(self.settings.system)
@@ -70,8 +69,8 @@ class ChatWindow(wx.Frame):
 		self.Bind(wx.EVT_MENU, self.OnDeleteModel, deleteModelMenu)
 		hostMenu = optionMenu.Append(wx.ID_ANY, "Set Host...")
 		self.Bind(wx.EVT_MENU, self.setHost, hostMenu)
-		logMenu = optionMenu.Append(wx.ID_ANY, "Log\tCTRL+ALT+L")
-		self.Bind(wx.EVT_MENU, self.log, logMenu)
+		#logMenu = optionMenu.Append(wx.ID_ANY, "Log\tCTRL+ALT+L")
+		#self.Bind(wx.EVT_MENU, self.log, logMenu)
 		
 		menuBar = wx.MenuBar()
 		menuBar.Append(chatMenu,"&Chat")
