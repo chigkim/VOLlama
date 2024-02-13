@@ -1,5 +1,6 @@
 # Change log
 
+* [Retrieval-Augmented Generation](https://blogs.nvidia.com/blog/what-is-retrieval-augmented-generation/) (RAG): See below for insturction on how to use it.
 * Many bug fixes
 * Generation parameters in advance menu
 * Voice and rate gets saved into persistent settings
@@ -19,6 +20,15 @@
 * Persistent Settings for system message and host address
 * Save and recall chat history
 * Focus model list: Control(Command)+L
+
+## [Retrieval-Augmented Generation](https://blogs.nvidia.com/blog/what-is-retrieval-augmented-generation/)
+
+* Go to Chat menu > Attach url or press Control(Command)+U.
+* Enter https://www.apple.com/apple-vision-pro/
+* Wait until the document is indexed.
+* In the message field, type "/q What can you do with Vision Pro?" without the quotes.
+* Putting "/q " in the beginning of your messsage triggers LlamaIndex to kick in.
+* You can also index a folder with documents in them. It'll index all the documents it can index such as pdf, txt, docs, etc including inside all the sub folders.
 
 ## Copy model in advance menu
 

@@ -2,7 +2,14 @@ import traceback
 import wx
 
 def displayError(e):
-	print(traceback.format_exc())
-	dialog = wx.MessageDialog(None, str(e), "Error", wx.OK | wx.ICON_ERROR)
-	dialog.ShowModal()
-	dialog.Destroy()
+	message = f"{e}\n{traceback.format_exc()}"
+	dlg = wx.MessageDialog(None, message, "Error", wx.OK | wx.ICON_ERROR)
+	dlg.ShowModal()
+	dlg.Destroy()
+
+
+def displayInfo(title, message):
+	dlg = wx.MessageDialog(None, message, title, wx.OK | wx.ICON_INFORMATION)
+	dlg.ShowModal()
+	dlg.Destroy()
+

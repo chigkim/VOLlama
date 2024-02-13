@@ -1,4 +1,4 @@
-version = 6
+version = 7
 import wx
 import threading
 import sounddevice as sd
@@ -46,8 +46,14 @@ class ChatWindow(wx.Frame):
 		self.Bind(wx.EVT_MENU, self.OnCopyMessage, copyMenu)
 		clearMenu = chatMenu.Append(wx.ID_ANY, "Clear\tCTRL+K")
 		self.Bind(wx.EVT_MENU, self.clearLast, clearMenu)
+
 		imageMenu = chatMenu.Append(wx.ID_ANY, "Attach an &Image...\tCTRL+I")
 		self.Bind(wx.EVT_MENU, self.onUploadImage, imageMenu)
+		documentMenu = chatMenu.Append(wx.ID_ANY, "Attach Documents...\tCTRL+D")
+		self.Bind(wx.EVT_MENU, self.onUploadDocuments, documentMenu)
+		urlMenu = chatMenu.Append(wx.ID_ANY, "Attach an &URL...\tCTRL+U")
+		self.Bind(wx.EVT_MENU, self.onUploadURLButton, urlMenu)
+
 		self.speakResponse = chatMenu.Append(wx.ID_ANY, "Speak Response with System Voice", kind=wx.ITEM_CHECK)
 		self.speakResponse.Check(self.settings.speakResponse)
 		self.Bind(wx.EVT_MENU, self.onToggleSpeakResponse, self.speakResponse)
@@ -76,7 +82,7 @@ class ChatWindow(wx.Frame):
 		menuBar.Append(chatMenu,"&Chat")
 		menuBar.Append(optionMenu,"&Advance")
 		self.SetMenuBar(menuBar)
-
+		
 		self.toolbar = self.CreateToolBar(wx.TB_HORIZONTAL | wx.NO_BORDER | wx.TB_FLAT)
 		self.models = []
 		self.modelList= wx.Choice(self.toolbar, choices=self.models)
@@ -195,6 +201,8 @@ class ChatWindow(wx.Frame):
 		self.model.messages = []
 		self.model.setSystem(self.settings.system)
 		self.response.Clear()
+		self.folder = None
+		self.url = None
 
 	def OnCopyMessage(self, event):
 		message = self.model.messages[-1]['content'].strip()
@@ -262,6 +270,20 @@ class ChatWindow(wx.Frame):
 			file = os.path.join(dirname, filename)
 			self.model.image = file
 			self.prompt.SetFocus()
+
+	def onUploadDocuments(self,e):
+		with wx.DirDialog(None, "Choose a folder with documents:", style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST) as dlg:
+			if dlg.ShowModal() == wx.ID_CANCEL: return
+			folder = dlg.GetPath()
+			self.setStatus(f"Indexing {folder}")
+			threading.Thread(target=self.model.startRag, args=(folder, self.setStatus)).start()
+
+	def onUploadURLButton(self, e):
+		with wx.TextEntryDialog(self, "Enter an url to index::", "URL", value="https://") as dlg:
+			if dlg.ShowModal() == wx.ID_CANCEL: return
+			url = dlg.GetValue()
+			self.setStatus(f"Indexing {url}")
+			threading.Thread(target=self.model.startRag, args=(url, self.setStatus)).start()
 
 	def onSave(self, e):
 		name = self.model.name[:self.model.name.index(":")].capitalize()

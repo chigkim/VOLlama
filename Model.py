@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import os
 from Parameters import get_parameters
+from RAG import RAG
 
 class Model:	
 	def __init__(self, name="neural-chat", host="http://localhost:11434"):
@@ -14,17 +15,28 @@ class Model:
 		self.name = name
 		self.generate = False
 		self.image = None
+		self.rag = None
 		self.load_parameters()
+
+	def initRag(self):
+		self.rag = RAG(self.host, self.name)
+
+	def startRag(self, path, setStatus):
+		self.initRag()
+		if path.startswith("http"): self.rag.loadUrl(path, setStatus)
+		else: self.rag.loadFolder(path, setStatus)
 		
 	def load_parameters(self):
 		self.parameters = get_parameters()
-
+		
 	def setHost(self, host):
 		self.host = host
 		self.client = Client(host=host)
+		if self.rag: self.initRag()
 
 	def setModel(self, name):
 		self.name = name
+		if self.rag: self.initRag()
 
 	def setSystem(self, system):
 		if system == "": return
@@ -43,8 +55,15 @@ class Model:
 				if 'images' in self.messages[i]: self.messages[i].pop('images')
 		try:
 			self.messages.append(message)
-			wx.CallAfter(window.setStatus, "Reading and thinking...")
-			response = self.client.chat(model=self.name, messages=self.messages, stream=True, options=self.parameters)
+			if content.startswith("/q ") and self.rag:
+				message['content'] = message['content'][3:]
+				self.messages.append(message)
+				wx.CallAfter(window.setStatus, "Processing with RAG...")
+				response = self.rag.ask(message['content'])
+			else:
+				self.messages.append(message)
+				wx.CallAfter(window.setStatus, "Processing...")
+				response = self.client.chat(model=self.name, messages=self.messages, stream=True, options=self.parameters)
 			message = ""
 			wx.CallAfter(window.response.AppendText, self.name[:self.name.index(":")].capitalize() + ": ")
 			self.generate = True
@@ -52,7 +71,8 @@ class Model:
 			for chunk in response:
 				if not sentence: wx.CallAfter(window.setStatus, "Typing...")
 				data = chunk
-				chunk = chunk['message']['content']
+				if not isinstance(chunk, str):
+					chunk = chunk['message']['content']
 				message += chunk
 				if window.speakResponse.IsChecked():
 					sentence += chunk
@@ -65,8 +85,8 @@ class Model:
 				if not self.generate: break
 			if sentence and window.speakResponse.IsChecked(): wx.CallAfter(window.speech.speak, sentence)
 			wx.CallAfter(window.response.AppendText, os.linesep)
-			div = 1000000000
 			if 'total_duration' in data:
+				div = 1000000000
 				total = data['total_duration']/div
 				load = data['load_duration']/div
 				prompt_count = data['prompt_eval_count'] if 'prompt_eval_count' in data else 0
@@ -76,7 +96,7 @@ class Model:
 				stat = f"Total: {total:.2f} secs, Load: {load:.2f} secs, Prompt: {prompt_count} tokens ({prompt_count/prompt_duration:.2f} t/s), Output: {gen_count} tokens ({gen_count/gen_duration:.2f} t/s)"
 				wx.CallAfter(window.setStatus, stat)
 			else:
-				wx.CallAfter(window.setStatus, "Interrupted.")
+				wx.CallAfter(window.setStatus, "Finished.")
 			self.messages.append({"role":"assistant", "content":message.strip()})
 		except Exception as e:
 			self.messages.pop()

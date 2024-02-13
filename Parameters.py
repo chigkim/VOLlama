@@ -5,7 +5,9 @@ import os
 
 class ParametersDialog(wx.Dialog):
 	def __init__(self, parent, title):
+		
 		super(ParametersDialog, self).__init__(parent, title=title, size=(400, 600))
+		get_parameters()
 		self.settings = get_settings()
 		self.controls = {}  # Store controls here to access them later
 		self.InitUI()
@@ -72,11 +74,17 @@ class ParametersDialog(wx.Dialog):
 
 def get_parameters():
 	settings = get_settings()
+	p = os.path.join(os.path.dirname(__file__), "default-parameters.json")
+	with open(p) as file:
+		default = json.load(file)
 	if not hasattr(settings, 'parameters'):
-		p = os.path.join(os.path.dirname(__file__), "default-parameters.json")
-		with open(p) as file:
-			settings.parameters = json.load(file)
-
+		settings.parameters = default
+	else:
+		parameters = settings.parameters
+		for key, value in default.items():
+			if key in parameters: continue
+			parameters[key] = value
+		settings.parameters = parameters
 	options = {}
 	for key, value in settings.parameters.items():
 		if value['value'] == []: continue
