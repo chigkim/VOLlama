@@ -1,6 +1,10 @@
 # Change log
 
-* Status bar and stats
+* Many bug fixes
+* Generation parameters in advance menu
+* Voice and rate gets saved into persistent settings
+* Changed from NSSpeechSynthesizer to AVSpeechSynthesizer to avoid random crash
+* Status bar and stats (Accessible in Windows only)
 * Check for update
 * Fixed message order.
 * Checkbox Speak response in chat menu
