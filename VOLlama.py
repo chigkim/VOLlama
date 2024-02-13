@@ -46,8 +46,14 @@ class ChatWindow(wx.Frame):
 		self.Bind(wx.EVT_MENU, self.OnCopyMessage, copyMenu)
 		clearMenu = chatMenu.Append(wx.ID_ANY, "Clear\tCTRL+K")
 		self.Bind(wx.EVT_MENU, self.clearLast, clearMenu)
+
 		imageMenu = chatMenu.Append(wx.ID_ANY, "Attach an &Image...\tCTRL+I")
 		self.Bind(wx.EVT_MENU, self.onUploadImage, imageMenu)
+		documentMenu = chatMenu.Append(wx.ID_ANY, "Attach Documents...\tCTRL+D")
+		self.Bind(wx.EVT_MENU, self.onUploadDocuments, documentMenu)
+		urlMenu = chatMenu.Append(wx.ID_ANY, "Attach an &URL...\tCTRL+U")
+		self.Bind(wx.EVT_MENU, self.onUploadURLButton, urlMenu)
+
 		self.speakResponse = chatMenu.Append(wx.ID_ANY, "Speak Response with System Voice", kind=wx.ITEM_CHECK)
 		self.speakResponse.Check(self.settings.speakResponse)
 		self.Bind(wx.EVT_MENU, self.onToggleSpeakResponse, self.speakResponse)
@@ -55,10 +61,6 @@ class ChatWindow(wx.Frame):
 		self.configSpeech = chatMenu.Append(wx.ID_ANY, "Configure Voice")
 		self.Bind(wx.EVT_MENU, self.speech.present_voice_rate_dialog, self.configSpeech)
 
-		documentMenu = chatMenu.Append(wx.ID_ANY, "Attach Documents...\tCTRL+D")
-		self.Bind(wx.EVT_MENU, self.onUploadDocuments, documentMenu)
-		urlMenu = chatMenu.Append(wx.ID_ANY, "Attach an &URL...\tCTRL+U")
-		self.Bind(wx.EVT_MENU, self.onUploadURLButton, urlMenu)
 		exitMenu = chatMenu.Append(wx.ID_EXIT)
 		self.Bind(wx.EVT_MENU, self.OnExit, exitMenu)
 
