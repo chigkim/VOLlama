@@ -63,7 +63,7 @@ class SettingsManager:
 			'chunk_size':1024,
 			'chunk_overlap':20,
 			'similarity_top_k':2,
-			'similarity_cutoff':0.7,
+			'similarity_cutoff':0.0,
 			'response_mode': 'refine',
 			'show_context': False
 		}
