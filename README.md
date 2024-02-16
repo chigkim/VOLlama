@@ -5,33 +5,28 @@ An accessible chat client for Ollama
 
 To use VOLlama, you must first set up Ollama and download a model from Ollama's library. Follow these steps:
 
-For Windows users, Docker is likely the most straightforward method to install Ollama:
-
-First, [install Docker](https://docs.docker.com/get-docker/).
-
-Run the command below in the command line to install Ollama:
-```
-docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
-```
+First install [Ollama](https://ollama.com/).
 
 To download a model, execute the command below, replacing `openhermes` with a [different model](https://ollama.ai/library) as needed:
 ```
-docker exec ollama ollama pull openhermes
+ollama pull openhermes
 ```
 
 Finally, Run VOLlama.exe
 
 ## Shortcuts
 
-* Control (Command) + L: Focus on the model list.
-* Control (Command) + Enter: Insert a new line.
+On Mac, press command key instead of control key.
+
+* Control+L: Focus on the model list.
+* Control+Enter: Insert a new line.
 * Esc: Shift focus to the prompt.
 
 If you're operating Ollama on a different machine, you can configure the host address in the advanced menu.
 
 ## [Retrieval-Augmented Generation](https://blogs.nvidia.com/blog/what-is-retrieval-augmented-generation/)
 
-* Go to Chat menu > Attach url or press Control(Command)+U.
+* Go to Rag menu > Attach url.
 * Enter https://www.apple.com/apple-vision-pro/
 * Wait until the document is indexed.
 * In the message field, type "/q What can you do with Vision Pro?" without the quotes.
