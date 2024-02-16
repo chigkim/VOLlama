@@ -1,5 +1,6 @@
 # Change log
 
+* Rag settings include: chunk_size, chunk_overlap, similarity_top_k, similarity_cutoff, show_context, ragResponseMode
 * Different response Modes for RAG
 * Option to display context sent to RAG system
 * Epub reader
