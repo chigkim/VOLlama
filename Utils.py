@@ -3,6 +3,7 @@ import wx
 
 def displayError(e):
 	message = f"{e}\n{traceback.format_exc()}"
+	print(message)
 	dlg = wx.MessageDialog(None, message, "Error", wx.OK | wx.ICON_ERROR)
 	dlg.ShowModal()
 	dlg.Destroy()

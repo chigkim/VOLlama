@@ -1,6 +1,6 @@
 import wx
 import json
-from Settings import get_settings
+from Settings import settings
 import os
 
 class ParametersDialog(wx.Dialog):
@@ -8,7 +8,6 @@ class ParametersDialog(wx.Dialog):
 		
 		super(ParametersDialog, self).__init__(parent, title=title, size=(400, 600))
 		get_parameters()
-		self.settings = get_settings()
 		self.controls = {}  # Store controls here to access them later
 		self.InitUI()
 
@@ -20,7 +19,7 @@ class ParametersDialog(wx.Dialog):
 		scroll_area.SetScrollbars(1, 1, 1, 1)
 		scroll_sizer = wx.BoxSizer(wx.VERTICAL)
 
-		for key, val in self.settings.parameters.items():
+		for key, val in settings.parameters.items():
 			hbox = wx.BoxSizer(wx.HORIZONTAL)
 			label = wx.StaticText(scroll_area, label=key.replace("_", " ").capitalize() + ":")
 			hbox.Add(label, 0, wx.ALL | wx.CENTER, 5)
@@ -57,23 +56,22 @@ class ParametersDialog(wx.Dialog):
 	def save(self):
 		for key, ctrl in self.controls.items():
 			if isinstance(ctrl, wx.CheckBox):
-				self.settings.parameters[key]['value'] = ctrl.IsChecked()
+				settings.parameters[key]['value'] = ctrl.IsChecked()
 			else:
 				value = ctrl.GetValue()
 				# Convert value back to the appropriate type based on its original type
-				if self.settings.parameters[key]['value'] is not None:
-					if isinstance(self.settings.parameters[key]['value'], int):
+				if settings.parameters[key]['value'] is not None:
+					if isinstance(settings.parameters[key]['value'], int):
 						value = int(value)
-					elif isinstance(self.settings.parameters[key]['value'], float):
+					elif isinstance(settings.parameters[key]['value'], float):
 						value = float(value)
-					elif isinstance(self.settings.parameters[key]['value'], list):
+					elif isinstance(settings.parameters[key]['value'], list):
 						value = value.split(', ')
 						if value == ['']: value = []
-				self.settings.parameters[key]['value'] = value
-		self.settings.parameters = self.settings.parameters
+				settings.parameters[key]['value'] = value
+		settings.parameters = settings.parameters
 
 def get_parameters():
-	settings = get_settings()
 	p = os.path.join(os.path.dirname(__file__), "default-parameters.json")
 	with open(p) as file:
 		default = json.load(file)

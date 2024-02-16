@@ -20,3 +20,5 @@ pypdf
 docx2txt
 cryptography
 MainContentExtractor
+EbookLib
+html2text

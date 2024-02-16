@@ -6,6 +6,8 @@ import re
 import os
 from Parameters import get_parameters
 from RAG import RAG
+from Settings import settings
+import re
 
 class Model:	
 	def __init__(self, name="neural-chat", host="http://localhost:11434"):
@@ -74,7 +76,7 @@ class Model:
 				if not isinstance(chunk, str):
 					chunk = chunk['message']['content']
 				message += chunk
-				if window.speakResponse.IsChecked():
+				if settings.speakResponse:
 					sentence += chunk
 					if re.search(r'[\.\?!\n]\s*$', sentence):
 						sentence = sentence.strip()
@@ -83,8 +85,15 @@ class Model:
 						sentence = ""
 				wx.CallAfter(window.response.AppendText, chunk)
 				if not self.generate: break
-			if sentence and window.speakResponse.IsChecked(): wx.CallAfter(window.speech.speak, sentence)
+			if sentence and settings.speakResponse: wx.CallAfter(window.speech.speak, sentence)
 			wx.CallAfter(window.response.AppendText, os.linesep)
+			if window.debugMenu.IsChecked() and content.startswith("/q ") and self.rag:
+				nodes = self.rag.response.source_nodes
+				for i in range(len(nodes)):
+					text = nodes[i].text
+					text = re.sub(r'\n+', '\n', text)
+					wx.CallAfter(window.response.AppendText, f"----------{os.linesep}Context {i+1}: {text}{os.linesep}")
+
 			if 'total_duration' in data:
 				div = 1000000000
 				total = data['total_duration']/div

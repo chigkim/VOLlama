@@ -1,5 +1,9 @@
 # Change log
 
+* Different response Modes for RAG
+* Option to display context sent to RAG system
+* Epub reader
+* Global settings improvement
 * [Retrieval-Augmented Generation](https://blogs.nvidia.com/blog/what-is-retrieval-augmented-generation/) (RAG): See below for insturction on how to use it.
 * Many bug fixes
 * Generation parameters in advance menu

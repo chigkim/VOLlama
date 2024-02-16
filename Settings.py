@@ -45,7 +45,6 @@ class SettingsManager:
 		self.config_dir = appdirs.user_config_dir(self.app_name, self.company_name)
 		self.settings_file_path = os.path.join(self.config_dir, 'settings.json')
 		os.makedirs(self.config_dir, exist_ok=True)
-		self.settings = DotDict(parent=self)  # Initialize settings to an empty DotDict with parent reference.
 		self.settings = self.load_settings()  # Then attempt to load settings, or initialize with defaults if loading fails.
 
 	def save_settings(self):
@@ -59,7 +58,8 @@ class SettingsManager:
 			'system': "",
 			'speakResponse': False,
 			'voice': 'unknown',
-			'rate': 0.0
+			'rate': 0.0,
+			'ragResponseMode': 'refine'
 		}
 		try:
 			with open(self.settings_file_path, 'r') as file:
@@ -76,10 +76,13 @@ class SettingsManager:
 		self.save_settings()  # Save settings, ensuring any additions are persisted
 		return self.settings
 
-settings_manager = SettingsManager()  # This will be the shared instance.
+	@property
+	def settings(self):
+		return self._settings
 
-def get_settings():
-	return settings_manager.settings
+	@settings.setter
+	def settings(self, value):
+		self._settings = value
+		self.save_settings()
 
-def save_settings():
-	settings_manager.save_settings()
+settings = SettingsManager().settings

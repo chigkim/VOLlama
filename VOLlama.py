@@ -1,11 +1,11 @@
-version = 7
+version = 8
 import wx
 import threading
 import sounddevice as sd
 import soundfile as sf
 import os
 from Model import Model
-from Settings import get_settings
+from Settings import settings
 from CopyDialog import CopyDialog
 import codecs
 import json
@@ -24,10 +24,9 @@ def play(file):
 class ChatWindow(wx.Frame):
 	def __init__(self, parent, title):
 		super(ChatWindow, self).__init__(parent, title=title, size=(1920,1080))
-		self.settings = get_settings()
 		self.speech = Speech()
-		self.model = Model(host=self.settings.host)
-		self.model.setSystem(self.settings.system)
+		self.model = Model(host=settings.host)
+		self.model.setSystem(settings.system)
 		self.InitUI()
 		self.Centre()
 		self.Show()
@@ -49,13 +48,9 @@ class ChatWindow(wx.Frame):
 
 		imageMenu = chatMenu.Append(wx.ID_ANY, "Attach an &Image...\tCTRL+I")
 		self.Bind(wx.EVT_MENU, self.onUploadImage, imageMenu)
-		documentMenu = chatMenu.Append(wx.ID_ANY, "Attach Documents...\tCTRL+D")
-		self.Bind(wx.EVT_MENU, self.onUploadDocuments, documentMenu)
-		urlMenu = chatMenu.Append(wx.ID_ANY, "Attach an &URL...\tCTRL+U")
-		self.Bind(wx.EVT_MENU, self.onUploadURLButton, urlMenu)
 
 		self.speakResponse = chatMenu.Append(wx.ID_ANY, "Speak Response with System Voice", kind=wx.ITEM_CHECK)
-		self.speakResponse.Check(self.settings.speakResponse)
+		self.speakResponse.Check(settings.speakResponse)
 		self.Bind(wx.EVT_MENU, self.onToggleSpeakResponse, self.speakResponse)
 
 		self.configSpeech = chatMenu.Append(wx.ID_ANY, "Configure Voice")
@@ -64,23 +59,39 @@ class ChatWindow(wx.Frame):
 		exitMenu = chatMenu.Append(wx.ID_EXIT)
 		self.Bind(wx.EVT_MENU, self.OnExit, exitMenu)
 
-		optionMenu= wx.Menu()
-		setSystemMenu = optionMenu.Append(wx.ID_ANY, "Set System Message...\tCTRL+ALT+S")
+		advanceMenu= wx.Menu()
+		setSystemMenu = advanceMenu.Append(wx.ID_ANY, "Set System Message...\tCTRL+ALT+S")
 		self.Bind(wx.EVT_MENU, self.setSystem, setSystemMenu)
-		parametersMenu = optionMenu.Append(wx.ID_ANY, "Set Generation Parameters...\tCTRL+ALT+P")
+		parametersMenu = advanceMenu.Append(wx.ID_ANY, "Set Generation Parameters...\tCTRL+ALT+P")
 		self.Bind(wx.EVT_MENU, self.setParameters, parametersMenu)
-		copyModelMenu = optionMenu.Append(wx.ID_ANY, "Copy Model...")
+		copyModelMenu = advanceMenu.Append(wx.ID_ANY, "Copy Model...")
 		self.Bind(wx.EVT_MENU, self.OnCopyModel, copyModelMenu)
-		deleteModelMenu = optionMenu.Append(wx.ID_ANY, "Delete Model")
+		deleteModelMenu = advanceMenu.Append(wx.ID_ANY, "Delete Model")
 		self.Bind(wx.EVT_MENU, self.OnDeleteModel, deleteModelMenu)
-		hostMenu = optionMenu.Append(wx.ID_ANY, "Set Host...")
+		hostMenu = advanceMenu.Append(wx.ID_ANY, "Set Host...")
 		self.Bind(wx.EVT_MENU, self.setHost, hostMenu)
-		#logMenu = optionMenu.Append(wx.ID_ANY, "Log\tCTRL+ALT+L")
+		#logMenu = advanceMenu.Append(wx.ID_ANY, "Log\tCTRL+ALT+L")
 		#self.Bind(wx.EVT_MENU, self.log, logMenu)
+
+		ragMenu= wx.Menu()
+		urlMenu = ragMenu.Append(wx.ID_ANY, "Attach an &URL...\tCTRL+U")
+		self.Bind(wx.EVT_MENU, self.onUploadURLButton, urlMenu)
+		documentMenu = ragMenu.Append(wx.ID_ANY, "Attach Documents...\tCTRL+D")
+		self.Bind(wx.EVT_MENU, self.onUploadDocuments, documentMenu)
+		self.debugMenu = ragMenu.Append(wx.ID_ANY, "Show Context", kind=wx.ITEM_CHECK)
+		self.Bind(wx.EVT_MENU, None, self.debugMenu)
+		ragMenu.AppendSeparator()
+		labelItem = ragMenu.Append(wx.ID_ANY, "Select Response Mode", kind=wx.ITEM_NORMAL)
+		labelItem.Enable(False)
+		self.response_modes = ['refine', 'compact', 'tree_summarize', 'simple_summarize', 'accumulate', 'compact_accumulate']
+		for mode in self.response_modes:
+			modeMenu = ragMenu.AppendRadioItem(wx.ID_ANY, mode)
+			self.Bind(wx.EVT_MENU, self.onSelectResponse, modeMenu)
 		
 		menuBar = wx.MenuBar()
 		menuBar.Append(chatMenu,"&Chat")
-		menuBar.Append(optionMenu,"&Advance")
+		menuBar.Append(advanceMenu,"&Advance")
+		menuBar.Append(ragMenu,"&Rag")
 		self.SetMenuBar(menuBar)
 		
 		self.toolbar = self.CreateToolBar(wx.TB_HORIZONTAL | wx.NO_BORDER | wx.TB_FLAT)
@@ -157,19 +168,19 @@ class ChatWindow(wx.Frame):
 		if dlg.ShowModal() == wx.ID_OK:
 			host = dlg.GetValue()
 			self.model.setHost(host)
-			self.settings.host = host
+			settings.host = host
 			self.refreshModels()
 		dlg.Destroy()
 
 	def onToggleSpeakResponse(self, e):
-		self.settings.speakResponse = self.speakResponse.IsChecked()
+		settings.speakResponse = self.speakResponse.IsChecked()
 
 	def setSystem(self, event):
-		dlg = wx.TextEntryDialog(self, "Enter the system message:", "System", value=self.settings.system)
+		dlg = wx.TextEntryDialog(self, "Enter the system message:", "System", value=settings.system)
 		if dlg.ShowModal() == wx.ID_OK:
 			system = dlg.GetValue()
 			self.model.setSystem(system)
-			self.settings.system = system
+			settings.system = system
 		dlg.Destroy()
 
 	def setParameters(self, e):
@@ -199,7 +210,7 @@ class ChatWindow(wx.Frame):
 	def OnNewChat(self, event):
 		self.FocusOnPrompt()
 		self.model.messages = []
-		self.model.setSystem(self.settings.system)
+		self.model.setSystem(settings.system)
 		self.response.Clear()
 		self.folder = None
 		self.url = None
@@ -294,11 +305,16 @@ class ChatWindow(wx.Frame):
 			with codecs.open(os.path.join(dirname, filename), 'w', 'utf-8') as f:
 				json.dump(self.model.messages, f, indent="\t")
 
+	def onSelectResponse(self, event):
+		menuItem = self.GetMenuBar().FindItemById(event.GetId())
+		mode = menuItem.GetItemLabel()
+		settings.ragResponseMode = mode
+
 	def OnExit(self, event):
 		self.Destroy()
 
 	def log(self,e):
-		print(self.settings.to_dict())
+		print(settings.to_dict())
 
 if __name__ == "__main__":
 	app = wx.App(False)

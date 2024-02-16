@@ -1,7 +1,7 @@
 import platform
 import queue
 import wx
-from Settings import get_settings
+from Settings import settings
 
 # macOS specific imports
 if platform.system() == 'Darwin':
@@ -13,15 +13,14 @@ elif platform.system() == 'Windows':
 
 class Speech:
 	def __init__(self):
-		self.settings = get_settings()
 		self.os = platform.system()
 		self.queue = queue.Queue()
 		self.synth = self.setup_synth()
 		self.voice = None
 		self.rate = 0.6
-		if self.settings.voice != "unknown":
-			self.set_voice(self.settings.voice)
-			self.set_rate(self.settings.rate)
+		if settings.voice != "unknown":
+			self.set_voice(settings.voice)
+			self.set_rate(settings.rate)
 		
 
 	def setup_synth(self):
@@ -79,7 +78,7 @@ class Speech:
 			return self.synth.Voice.GetDescription()
 
 	def set_voice(self, voice_identifier):
-		self.settings.voice = voice_identifier
+		settings.voice = voice_identifier
 		if self.os == 'Darwin':
 			self.voice = voice_identifier
 		elif self.os == 'Windows':
@@ -95,7 +94,7 @@ class Speech:
 			return self.synth.Rate
 
 	def set_rate(self, rate):
-		self.settings.rate = rate
+		settings.rate = rate
 		if self.os == 'Darwin':
 			self.rate = rate
 		elif self.os == 'Windows':
