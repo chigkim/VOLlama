@@ -12,6 +12,7 @@ import json
 from Speech import Speech
 from Update import check_update
 from Parameters import ParametersDialog
+from RAGParameterDialog import RAGParameterDialog
 
 def playSD(file):
 	p = os.path.join(os.path.dirname(__file__), file)
@@ -25,7 +26,7 @@ class ChatWindow(wx.Frame):
 	def __init__(self, parent, title):
 		super(ChatWindow, self).__init__(parent, title=title, size=(1920,1080))
 		self.speech = Speech()
-		self.speech.speak("VOLlama is starting. Please wait.")
+		self.speech.speak("VOLlama is starting...")
 		self.model = Model(host=settings.host)
 		self.model.setSystem(settings.system)
 		self.InitUI()
@@ -63,7 +64,7 @@ class ChatWindow(wx.Frame):
 		advanceMenu= wx.Menu()
 		setSystemMenu = advanceMenu.Append(wx.ID_ANY, "Set System Message...\tCTRL+ALT+S")
 		self.Bind(wx.EVT_MENU, self.setSystem, setSystemMenu)
-		parametersMenu = advanceMenu.Append(wx.ID_ANY, "Set Generation Parameters...\tCTRL+ALT+P")
+		parametersMenu = advanceMenu.Append(wx.ID_ANY, "Generation Parameters...\tCTRL+ALT+P")
 		self.Bind(wx.EVT_MENU, self.setParameters, parametersMenu)
 		copyModelMenu = advanceMenu.Append(wx.ID_ANY, "Copy Model...")
 		self.Bind(wx.EVT_MENU, self.OnCopyModel, copyModelMenu)
@@ -79,15 +80,8 @@ class ChatWindow(wx.Frame):
 		self.Bind(wx.EVT_MENU, self.onUploadURLButton, urlMenu)
 		documentMenu = ragMenu.Append(wx.ID_ANY, "Attach Documents...\tCTRL+D")
 		self.Bind(wx.EVT_MENU, self.onUploadDocuments, documentMenu)
-		self.debugMenu = ragMenu.Append(wx.ID_ANY, "Show Context", kind=wx.ITEM_CHECK)
-		self.Bind(wx.EVT_MENU, None, self.debugMenu)
-		ragMenu.AppendSeparator()
-		labelItem = ragMenu.Append(wx.ID_ANY, "Select Response Mode", kind=wx.ITEM_NORMAL)
-		labelItem.Enable(False)
-		self.response_modes = ['refine', 'compact', 'tree_summarize', 'simple_summarize', 'accumulate', 'compact_accumulate']
-		for mode in self.response_modes:
-			modeMenu = ragMenu.AppendRadioItem(wx.ID_ANY, mode)
-			self.Bind(wx.EVT_MENU, self.onSelectResponse, modeMenu)
+		ragSettingsMenu = ragMenu.Append(wx.ID_ANY, "Settings...")
+		self.Bind(wx.EVT_MENU, self.onShowRagSettings, ragSettingsMenu  )
 		
 		menuBar = wx.MenuBar()
 		menuBar.Append(chatMenu,"&Chat")
@@ -306,10 +300,9 @@ class ChatWindow(wx.Frame):
 			with codecs.open(os.path.join(dirname, filename), 'w', 'utf-8') as f:
 				json.dump(self.model.messages, f, indent="\t")
 
-	def onSelectResponse(self, event):
-		menuItem = self.GetMenuBar().FindItemById(event.GetId())
-		mode = menuItem.GetItemLabel()
-		settings.ragResponseMode = mode
+	def onShowRagSettings(self, event):
+		with RAGParameterDialog(self, "RAG Settings") as dlg:
+			    dlg.ShowModal()
 
 	def OnExit(self, event):
 		self.Destroy()

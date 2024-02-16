@@ -59,7 +59,13 @@ class SettingsManager:
 			'speakResponse': False,
 			'voice': 'unknown',
 			'rate': 0.0,
-			'ragResponseMode': 'refine'
+			'ragResponseMode': 'refine',
+			'chunk_size':1024,
+			'chunk_overlap':20,
+			'similarity_top_k':2,
+			'similarity_cutoff':0.7,
+			'response_mode': 'refine',
+			'show_context': False
 		}
 		try:
 			with open(self.settings_file_path, 'r') as file:

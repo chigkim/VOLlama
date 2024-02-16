@@ -58,6 +58,9 @@ class Model:
 		try:
 			self.messages.append(message)
 			if content.startswith("/q ") and self.rag:
+				if not self.rag.index:
+					displayError(Exception("No index found."))
+					return
 				message['content'] = message['content'][3:]
 				self.messages.append(message)
 				wx.CallAfter(window.setStatus, "Processing with RAG...")
@@ -87,7 +90,7 @@ class Model:
 				if not self.generate: break
 			if sentence and settings.speakResponse: wx.CallAfter(window.speech.speak, sentence)
 			wx.CallAfter(window.response.AppendText, os.linesep)
-			if window.debugMenu.IsChecked() and content.startswith("/q ") and self.rag:
+			if settings.show_context and content.startswith("/q ") and self.rag:
 				nodes = self.rag.response.source_nodes
 				for i in range(len(nodes)):
 					text = nodes[i].text
