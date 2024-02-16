@@ -25,6 +25,7 @@ class ChatWindow(wx.Frame):
 	def __init__(self, parent, title):
 		super(ChatWindow, self).__init__(parent, title=title, size=(1920,1080))
 		self.speech = Speech()
+		self.speech.speak("VOLlama is starting. Please wait.")
 		self.model = Model(host=settings.host)
 		self.model.setSystem(settings.system)
 		self.InitUI()
