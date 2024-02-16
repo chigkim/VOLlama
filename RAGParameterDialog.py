@@ -6,38 +6,36 @@ class RAGParameterDialog(wx.Dialog):
 		super().__init__(parent, title=title, size=(400, 400))
 
 		self.panel = wx.Panel(self)
-		self.main_sizer = wx.BoxSizer(wx.VERTICAL)
+		self.grid_sizer = wx.GridBagSizer(5, 5)  # Specify vertical and horizontal gap between widgets
 
-		# Define parameters
+		# Define parameters and their tooltips
 		self.parameters = {
-			"chunk_size": {"label": "Chunk Size", "control": "SpinCtrl", "min": 1, "max": int(settings.parameters['num_ctx']['value']/2), "initial": settings.chunk_size},
-			"chunk_overlap": {"label": "Chunk Overlap", "control": "SpinCtrl", "min": 0, "max": 100, "initial": settings.chunk_overlap},
-			"similarity_top_k": {"label": "Similarity Top K", "control": "SpinCtrl", "min": 1, "max": 100, "initial": settings.similarity_top_k},
-			"similarity_cutoff": {"label": "Similarity Cutoff", "control": "SpinCtrlDouble", "min": 0.0, "max": 1.0, "inc": 0.01, "initial": settings.similarity_cutoff},
-			"response_modes": {"label": "Response Mode", "control": "Choice", "choices": ['refine', 'compact', 'tree_summarize', 'simple_summarize', 'accumulate', 'compact_accumulate'], "initial": settings.response_mode},
-			"show_context": {"label": "Show Context", "control": "CheckBox", "initial": settings.show_context},
+			"chunk_size": {"label": "Chunk Size", "control": "SpinCtrl", "min": 1, "max": int(settings.parameters['num_ctx']['value']/2), "initial": settings.chunk_size, "tooltip": "Defines the size of text chunks for indexing. Smaller sizes may improve search granularity."},
+			"chunk_overlap": {"label": "Chunk Overlap", "control": "SpinCtrl", "min": 0, "max": 100, "initial": settings.chunk_overlap, "tooltip": "Overlap between chunks to ensure continuity in search results."},
+			"similarity_top_k": {"label": "Similarity Top K", "control": "SpinCtrl", "min": 1, "max": 100, "initial": settings.similarity_top_k, "tooltip": "The number of top results to consider when evaluating similarity."},
+			"similarity_cutoff": {"label": "Similarity Cutoff", "control": "SpinCtrlDouble", "min": 0.0, "max": 1.0, "inc": 0.01, "initial": settings.similarity_cutoff, "tooltip": "The minimum similarity score for a result to be considered relevant."},
+			"response_modes": {"label": "Response Mode", "control": "Choice", "choices": ['refine', 'compact', 'tree_summarize', 'simple_summarize', 'accumulate', 'compact_accumulate'], "initial": settings.response_mode, "tooltip": "Determines how the indexed results are processed and presented."},
+			"show_context": {"label": "Show Context", "control": "CheckBox", "initial": settings.show_context, "tooltip": "Toggle to show or hide additional context related to your query."},
 		}
 
 		self.controls = {}
-
+		row_index = 0
 		for key, value in self.parameters.items():
-			self.add_parameter_control(key, **value)
+			self.add_parameter_control(row_index, key, **value)
+			row_index += 1
 
-
+		# Add OK and Cancel buttons at the bottom
 		ok_button = wx.Button(self.panel, label='OK', id=wx.ID_OK)
 		ok_button.Bind(wx.EVT_BUTTON, self.on_ok)
-		cancel_button = wx.Button(self.panel, label='Cancel', id=wx.ID_CANCEL)		
-		buttons_hbox = wx.BoxSizer(wx.HORIZONTAL)
-		buttons_hbox.Add(ok_button, 0, wx.ALL, 5)
-		buttons_hbox.Add(cancel_button, 0, wx.ALL, 5)		
-		self.main_sizer.Add(buttons_hbox, 0, wx.ALL | wx.CENTER, 5)
+		cancel_button = wx.Button(self.panel, label='Cancel', id=wx.ID_CANCEL)
+		self.grid_sizer.Add(ok_button, pos=(row_index, 0), flag=wx.ALL, border=5)
+		self.grid_sizer.Add(cancel_button, pos=(row_index, 1), flag=wx.ALL, border=5)
 
-		self.panel.SetSizer(self.main_sizer)
+		self.panel.SetSizer(self.grid_sizer)
 
-	def add_parameter_control(self, name, label, control, **kwargs):
-		row_sizer = wx.BoxSizer(wx.HORIZONTAL)
+	def add_parameter_control(self, row, name, label, control, **kwargs):
 		label_widget = wx.StaticText(self.panel, label=label)
-		row_sizer.Add(label_widget, 0, wx.ALL | wx.ALIGN_CENTER_VERTICAL, 5)
+		self.grid_sizer.Add(label_widget, pos=(row, 0), flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL, border=5)
 
 		if control == "SpinCtrl":
 			widget = wx.SpinCtrl(self.panel, value=str(kwargs["initial"]), min=kwargs["min"], max=kwargs["max"])
@@ -53,9 +51,11 @@ class RAGParameterDialog(wx.Dialog):
 		else:
 			raise ValueError("Unsupported control type")
 
+		# Set tooltip
+		widget.SetToolTip(kwargs["tooltip"])
+		widget.SetName(label)
 		self.controls[name] = widget
-		row_sizer.Add(widget, 1, wx.EXPAND)
-		self.main_sizer.Add(row_sizer, 0, wx.EXPAND | wx.ALL, 5)
+		self.grid_sizer.Add(widget, pos=(row, 1), flag=wx.EXPAND | wx.ALL, border=5)
 
 	def on_ok(self, event):
 		for key, widget in self.controls.items():
