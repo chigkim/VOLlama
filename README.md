@@ -14,6 +14,30 @@ ollama pull openhermes
 
 Finally, Run VOLlama.exe
 
+## Ollama with Docker
+
+Instead of using Windows previous build, if you use Ollama with Docker, you might get a faster speed.
+
+Run the command below in the command line to install Ollama:
+```
+docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
+```
+
+To download a model, execute the command below, replacing `openhermes` with a [different model](https://ollama.ai/library) as needed:
+```
+docker exec ollama ollama pull openhermes
+```
+
+To stop Ollama, execute the command below.
+```
+docker stop ollama
+```
+
+To run Ollama again, execute the command below.
+```
+docker start ollama
+```
+
 ## Shortcuts
 
 On Mac, press command key instead of control key.
@@ -26,7 +50,7 @@ If you're operating Ollama on a different machine, you can configure the host ad
 
 ## [Retrieval-Augmented Generation](https://blogs.nvidia.com/blog/what-is-retrieval-augmented-generation/)
 
-* Go to Rag menu > Attach url.
+* Go to Rag menu > index an url.
 * Enter https://www.apple.com/apple-vision-pro/
 * Wait until the document is indexed.
 * In the message field, type "/q What can you do with Vision Pro?" without the quotes.
