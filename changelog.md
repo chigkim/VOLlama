@@ -1,7 +1,7 @@
 # Change log
 
-* Better error message for when no text found from semantic search.
-* Index file
+* Better error message if no text found from semantic search.
+* Able to index individual files
 * Fixed bug when index gets reset when changing model
 * Token counter on the status bar for RAG.
 * Fixed response mode not working.
