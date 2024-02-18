@@ -76,6 +76,10 @@ class RAG:
 		self.token_counter.reset_counts()
 		self.update_settings(self.host, self.llm_name)
 		node_postprocessors = [SimilarityPostprocessor(similarity_cutoff=settings.similarity_cutoff)]
-		query_engine = self.index.as_query_engine(similarity_top_k=settings.similarity_top_k, node_postprocessors = node_postprocessors, response_mode=settings.response_mode, streaming=True)
-		self.response = query_engine.query(question)
-		return self.response.response_gen
+		query_engine = self.index.as_query_engine(similarity_top_k=settings.similarity_top_k, node_postprocessors = node_postprocessors, response_mode='no_text')
+		response = query_engine.query(question)
+		if response.source_nodes:
+			query_engine = self.index.as_query_engine(similarity_top_k=settings.similarity_top_k, node_postprocessors = node_postprocessors, response_mode=settings.response_mode, streaming=True)
+			self.response = query_engine.query(question)
+			return self.response.response_gen
+		raise Exception("No texts found for the question using the current rag settings")

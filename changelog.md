@@ -1,5 +1,6 @@
 # Change log
 
+* Better error message for when no text found from semantic search.
 * Index file
 * Fixed bug when index gets reset when changing model
 * Token counter on the status bar for RAG.
