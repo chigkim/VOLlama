@@ -1,5 +1,6 @@
 # Change log
 
+* Choices for embed model: small, base, large
 * Better error message if no text found from semantic search.
 * Able to index individual files
 * Fixed bug when index gets reset when changing model

@@ -103,6 +103,7 @@ For Mac users, it's crucial to disable smart quotes before opening the copy mode
 | chunk_overlap | Sets how much beginning and end of each chunk should overlap. | int | 20 |
 | similarity_top_k | Sets how many chunks you would like to feed to model. Setting similarity_top_k to 10 means you want to feed 10 most relevant chunks to your question. | int | 2 |
 | similarity_cutoff | Sets the similarity threshold it uses to filter out less relevant chunks. Setting similarity_cutoff to 0.6 means you don't want to feed chunks with similarity score less than 0.6. Setting this too high could lead to filter out all chunks. | float | 0.0 |
+| Embed Model | Sets the model for index and search. There's a tradeoff between speed and accuracy. | String | base |
 | response_mode | Sets how RAG to synthesize the response. | string | refine |
 
 ## response modes

@@ -18,7 +18,7 @@ class RAG:
 		self.llm_name=model
 		self.host=host
 		#Settings.embed_model = OllamaEmbedding(base_url=host, model_name=model)
-		Settings.embed_model = HuggingFaceEmbedding(model_name="BAAI/bge-small-en-v1.5")
+		Settings.embed_model = HuggingFaceEmbedding(model_name=f"BAAI/bge-{settings.embed_model}-en-v1.5")
 		self.index = None
 		self.token_counter = TokenCountingHandler(tokenizer=tiktoken.encoding_for_model("gpt-3.5-turbo").encode)
 		Settings.callback_manager = CallbackManager([self.token_counter])

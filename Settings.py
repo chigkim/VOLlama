@@ -65,6 +65,7 @@ class SettingsManager:
 			'similarity_top_k':2,
 			'similarity_cutoff':0.0,
 			'response_mode': 'refine',
+			'embed_model': 'base',
 			'show_context': False
 		}
 		try:
