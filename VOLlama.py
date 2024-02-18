@@ -1,4 +1,4 @@
-version = 11
+version = 12
 import wx
 import threading
 import sounddevice as sd
@@ -76,10 +76,12 @@ class ChatWindow(wx.Frame):
 		#self.Bind(wx.EVT_MENU, self.log, logMenu)
 
 		ragMenu= wx.Menu()
-		urlMenu = ragMenu.Append(wx.ID_ANY, "Index an &URL...\tCTRL+U")
-		self.Bind(wx.EVT_MENU, self.onUploadURLButton, urlMenu)
-		documentMenu = ragMenu.Append(wx.ID_ANY, "Index a Folder with Documents...\tCTRL+D")
-		self.Bind(wx.EVT_MENU, self.onUploadDocuments, documentMenu)
+		indexUrlMenu = ragMenu.Append(wx.ID_ANY, "Index &URL...\tCTRL+U")
+		self.Bind(wx.EVT_MENU, self.onIndexURL, indexUrlMenu)
+		indexFileMenu = ragMenu.Append(wx.ID_ANY, "Index &File...\tCTRL+F")
+		self.Bind(wx.EVT_MENU, self.onIndexFile, indexFileMenu)
+		indexFolderMenu = ragMenu.Append(wx.ID_ANY, "Index Directory...\tCTRL+D")
+		self.Bind(wx.EVT_MENU, self.onIndexFolder, indexFolderMenu)
 		loadIndexMenu = ragMenu.Append(wx.ID_ANY, "Load Index...")
 		self.Bind(wx.EVT_MENU, self.loadIndex, loadIndexMenu)
 		saveIndexMenu = ragMenu.Append(wx.ID_ANY, "Save Index...")
@@ -281,14 +283,22 @@ class ChatWindow(wx.Frame):
 			self.model.image = file
 			self.prompt.SetFocus()
 
-	def onUploadDocuments(self,e):
+	def onIndexFile(self, event):
+		wildcard = "Supported Files (*.txt|*.pdf|*.docx|*.pptx|*.ppt|*.pptm|*.hwp|*.csv|*.epub|*.md|*.ipynb|*.mbox|*.jpg|*.png|*.jpeg|*.mp3|*.mp4)|*.txt|*.pdf|*.docx|*.pptx|*.ppt|*.pptm|**.hwp|*.csv|*.epub|*.md|*.ipynb|*.mbox|.jpg|*.png|*.jpeg|*.mp3|*.mp4"
+		with wx.FileDialog(self, "Choose a file", wildcard=wildcard, style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST|wx.FD_MULTIPLE) as fileDialog:
+			if fileDialog.ShowModal() == wx.ID_CANCEL: return
+			paths = fileDialog.GetPaths()
+			self.setStatus(f"Indexing {paths}")
+			threading.Thread(target=self.model.startRag, args=(paths, self.setStatus)).start()
+		
+	def onIndexFolder(self,e):
 		with wx.DirDialog(None, "Choose a folder with documents:", style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST) as dlg:
 			if dlg.ShowModal() == wx.ID_CANCEL: return
 			folder = dlg.GetPath()
 			self.setStatus(f"Indexing {folder}")
 			threading.Thread(target=self.model.startRag, args=(folder, self.setStatus)).start()
 
-	def onUploadURLButton(self, e):
+	def onIndexURL(self, e):
 		with wx.TextEntryDialog(self, "Enter an url to index::", "URL", value="https://") as dlg:
 			if dlg.ShowModal() == wx.ID_CANCEL: return
 			url = dlg.GetValue()
@@ -308,7 +318,6 @@ class ChatWindow(wx.Frame):
 		with wx.DirDialog(None, "Choose a folder with Index:", style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST) as dlg:
 			if dlg.ShowModal() == wx.ID_CANCEL: return
 			folder = dlg.GetPath()
-			self.model.initRag()
 			self.model.rag.load_index(folder)
 
 	def saveIndex(self,e):

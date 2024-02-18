@@ -20,12 +20,13 @@ class Model:
 		self.rag = None
 		self.load_parameters()
 
-	def initRag(self):
-		self.rag = RAG(self.host, self.name)
+	def updateRag(self):
+		self.rag.update_settings(self.host, self.name)
 
 	def startRag(self, path, setStatus):
-		self.initRag()
-		if path.startswith("http"): self.rag.loadUrl(path, setStatus)
+		self.rag = RAG(self.host, self.name)
+		if isinstance(path, list): self.rag.loadFolder(path, setStatus)
+		elif path.startswith("http"): self.rag.loadUrl(path, setStatus)
 		else: self.rag.loadFolder(path, setStatus)
 		
 	def load_parameters(self):
@@ -34,11 +35,11 @@ class Model:
 	def setHost(self, host):
 		self.host = host
 		self.client = Client(host=host)
-		if self.rag: self.initRag()
+		if self.rag: self.updateRag()
 
 	def setModel(self, name):
 		self.name = name
-		if self.rag: self.initRag()
+		if self.rag: self.updateRag()
 
 	def setSystem(self, system):
 		if system == "": return
