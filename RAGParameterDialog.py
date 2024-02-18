@@ -14,7 +14,7 @@ class RAGParameterDialog(wx.Dialog):
 			"chunk_overlap": {"label": "Chunk Overlap", "control": "SpinCtrl", "min": 0, "max": 100, "initial": settings.chunk_overlap, "tooltip": "Overlap between chunks to ensure continuity in search results."},
 			"similarity_top_k": {"label": "Similarity Top K", "control": "SpinCtrl", "min": 1, "max": 100, "initial": settings.similarity_top_k, "tooltip": "The number of top results to consider when evaluating similarity."},
 			"similarity_cutoff": {"label": "Similarity Cutoff", "control": "SpinCtrlDouble", "min": 0.0, "max": 1.0, "inc": 0.01, "initial": settings.similarity_cutoff, "tooltip": "The minimum similarity score for a result to be considered relevant."},
-			"response_modes": {"label": "Response Mode", "control": "Choice", "choices": ['refine', 'compact', 'tree_summarize', 'simple_summarize', 'accumulate', 'compact_accumulate'], "initial": settings.response_mode, "tooltip": "Determines how the indexed results are processed and presented."},
+			"response_mode": {"label": "Response Mode", "control": "Choice", "choices": ['refine', 'compact', 'tree_summarize', 'simple_summarize', 'accumulate', 'compact_accumulate'], "initial": settings.response_mode, "tooltip": "Determines how the indexed results are processed and presented."},
 			"show_context": {"label": "Show Context", "control": "CheckBox", "initial": settings.show_context, "tooltip": "Toggle to show or hide additional context related to your query."},
 		}
 

@@ -1,5 +1,8 @@
 # Change log
 
+* Token counter on the status bar for RAG.
+* Fixed response mode not working.
+* Output similarity score for each chunk.
 * Able to save and load index
 * Rag settings include: chunk_size, chunk_overlap, similarity_top_k, similarity_cutoff, show_context, ragResponseMode
 * Different response Modes for RAG

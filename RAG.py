@@ -1,10 +1,11 @@
 from Settings import settings
-from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Settings
+from llama_index.core import VectorStoreIndex, StorageContext, load_index_from_storage, SimpleDirectoryReader, Settings, get_response_synthesizer
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.llms.ollama import Ollama
 from llama_index.readers.web import MainContentExtractorReader# TrafilaturaWebReader, BeautifulSoupWebReader, SimpleWebPageReader
 from llama_index.core.postprocessor import SimilarityPostprocessor
-from llama_index.core import StorageContext, load_index_from_storage
+from llama_index.core.callbacks import CallbackManager, TokenCountingHandler
+import tiktoken
 from Utils import displayError, displayInfo
 from time import time
 from tiktoken_ext import openai_public
@@ -18,6 +19,8 @@ class RAG:
 		options = get_parameters()
 		Settings.llm = Ollama(model=model, request_timeout=300.0, base_url=host, additional_kwargs=options)
 		self.index = None
+		self.token_counter = TokenCountingHandler(tokenizer=tiktoken.encoding_for_model("gpt-3.5-turbo").encode)
+		Settings.callback_manager = CallbackManager([self.token_counter])
 		self.update_settings()
 
 	def update_settings(self):
@@ -64,6 +67,7 @@ class RAG:
 			setStatus("Failed to index.")
 
 	def ask(self, question):
+		self.token_counter.reset_counts()
 		self.update_settings()
 		node_postprocessors = [SimilarityPostprocessor(similarity_cutoff=settings.similarity_cutoff)]
 		query_engine = self.index.as_query_engine(similarity_top_k=settings.similarity_top_k, node_postprocessors = node_postprocessors, response_mode=settings.response_mode, streaming=True)

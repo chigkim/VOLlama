@@ -95,7 +95,7 @@ class Model:
 				for i in range(len(nodes)):
 					text = nodes[i].text
 					text = re.sub(r'\n+', '\n', text)
-					wx.CallAfter(window.response.AppendText, f"----------{os.linesep}Context {i+1}: {text}{os.linesep}")
+					wx.CallAfter(window.response.AppendText, f"----------{os.linesep}Context {i+1} similarity score: {nodes[i].score:.2f}\n{text}{os.linesep}")
 
 			if 'total_duration' in data:
 				div = 1000000000
@@ -107,6 +107,9 @@ class Model:
 				gen_duration = data['eval_duration']/div
 				stat = f"Total: {total:.2f} secs, Load: {load:.2f} secs, Prompt: {prompt_count} tokens ({prompt_count/prompt_duration:.2f} t/s), Output: {gen_count} tokens ({gen_count/gen_duration:.2f} t/s)"
 				wx.CallAfter(window.setStatus, stat)
+			elif content.startswith("/q ") and self.rag:
+				message = f"Embedding Tokens: {self.rag.token_counter.total_embedding_token_count}, LLM Prompt Tokens: {self.rag.token_counter.prompt_llm_token_count}, LLM Completion Tokens: {self.rag.token_counter.completion_llm_token_count}, Total LLM Token Count {self.rag.token_counter.total_llm_token_count}"
+				wx.CallAfter(window.setStatus, message)
 			else:
 				wx.CallAfter(window.setStatus, "Finished.")
 			self.messages.append({"role":"assistant", "content":message.strip()})
