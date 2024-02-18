@@ -4,6 +4,7 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.llms.ollama import Ollama
 from llama_index.readers.web import MainContentExtractorReader# TrafilaturaWebReader, BeautifulSoupWebReader, SimpleWebPageReader
 from llama_index.core.postprocessor import SimilarityPostprocessor
+from llama_index.core import StorageContext, load_index_from_storage
 from Utils import displayError, displayInfo
 from time import time
 from tiktoken_ext import openai_public
@@ -20,10 +21,23 @@ class RAG:
 		self.update_settings()
 
 	def update_settings(self):
+		options = get_parameters()
 		Settings.chunk_size = settings.chunk_size
 		Settings.chunk_overlap = settings.chunk_overlap
 		Settings.similarity_top_k = settings.similarity_top_k
 		Settings.similarity_cutoff = settings.similarity_cutoff
+		Settings.context_window = options['num_ctx']
+
+	def load_index(self, folder):
+		try:
+			storage_context = StorageContext.from_defaults(persist_dir=folder)
+			self.index = load_index_from_storage(storage_context)
+		except Exception as e: displayError(e)
+
+	def save_index(self, folder):
+		try:
+			self.index.storage_context.persist(persist_dir=folder)
+		except Exception as e: displayError(e)
 
 	def loadUrl(self, url, setStatus):
 		try:

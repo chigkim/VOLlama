@@ -76,10 +76,14 @@ class ChatWindow(wx.Frame):
 		#self.Bind(wx.EVT_MENU, self.log, logMenu)
 
 		ragMenu= wx.Menu()
-		urlMenu = ragMenu.Append(wx.ID_ANY, "Attach an &URL...\tCTRL+U")
+		urlMenu = ragMenu.Append(wx.ID_ANY, "Index an &URL...\tCTRL+U")
 		self.Bind(wx.EVT_MENU, self.onUploadURLButton, urlMenu)
-		documentMenu = ragMenu.Append(wx.ID_ANY, "Attach Documents...\tCTRL+D")
+		documentMenu = ragMenu.Append(wx.ID_ANY, "Index a Folder with Documents...\tCTRL+D")
 		self.Bind(wx.EVT_MENU, self.onUploadDocuments, documentMenu)
+		loadIndexMenu = ragMenu.Append(wx.ID_ANY, "Load Index...")
+		self.Bind(wx.EVT_MENU, self.loadIndex, loadIndexMenu)
+		saveIndexMenu = ragMenu.Append(wx.ID_ANY, "Save Index...")
+		self.Bind(wx.EVT_MENU, self.saveIndex, saveIndexMenu)
 		ragSettingsMenu = ragMenu.Append(wx.ID_ANY, "Settings...")
 		self.Bind(wx.EVT_MENU, self.onShowRagSettings, ragSettingsMenu  )
 		
@@ -299,6 +303,19 @@ class ChatWindow(wx.Frame):
 			dirname = dlg.GetDirectory()
 			with codecs.open(os.path.join(dirname, filename), 'w', 'utf-8') as f:
 				json.dump(self.model.messages, f, indent="\t")
+
+	def loadIndex(self,e):
+		with wx.DirDialog(None, "Choose a folder with Index:", style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST) as dlg:
+			if dlg.ShowModal() == wx.ID_CANCEL: return
+			folder = dlg.GetPath()
+			self.model.initRag()
+			self.model.rag.load_index(folder)
+
+	def saveIndex(self,e):
+		with wx.DirDialog(None, "Choose a folder to Save Index:", style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST) as dlg:
+			if dlg.ShowModal() == wx.ID_CANCEL: return
+			folder = dlg.GetPath()
+			self.model.rag.save_index(folder)
 
 	def onShowRagSettings(self, event):
 		with RAGParameterDialog(self, "RAG Settings") as dlg:
