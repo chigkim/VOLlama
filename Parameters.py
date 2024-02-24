@@ -75,6 +75,7 @@ def get_parameters():
 	p = os.path.join(os.path.dirname(__file__), "default-parameters.json")
 	with open(p) as file:
 		default = json.load(file)
+		default = default['parameters']
 	if not hasattr(settings, 'parameters'):
 		settings.parameters = default
 	else:

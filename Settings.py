@@ -72,24 +72,8 @@ class SettingsManager:
 			json.dump(settings_dict, file, indent='\t')
 
 	def load_settings(self):
-		default_dict = {
-			'host': 'http://localhost:11434',
-			"llm_name": "Ollama",
-			"model_name": "",
-			"openai_api_key": "",
-			"gemini_api_key": "",
-			'system': "",
-			'speakResponse': False,
-			'voice': 'unknown',
-			'rate': 0.0,
-			'ragResponseMode': 'refine',
-			'chunk_size':1024,
-			'chunk_overlap':20,
-			'similarity_top_k':2,
-			'similarity_cutoff':0.0,
-			'response_mode': 'refine',
-			'show_context': False
-		}
+		p = os.path.join(os.path.dirname(__file__), "default-parameters.json")
+		default_dict = json.load(open(p))
 		try:
 			with open(self.settings_file_path, 'r') as file:
 				settings_dict = json.load(file)

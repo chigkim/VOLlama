@@ -30,11 +30,14 @@ class ChatWindow(wx.Frame):
 		super(ChatWindow, self).__init__(parent, title=title, size=(1920,1080))
 		self.speech = Speech()
 		self.speech.speak("VOLlama is starting...")
-		self.model = Model()
-		self.model.setSystem(settings.system)
 		self.InitUI()
+		self.Maximize(True)
 		self.Centre()
 		self.Show()
+		self.model = Model()
+		self.model.setSystem(settings.system)
+		self.refreshModels()
+		self.prompt.SetFocus()
 		threading.Thread(target=check_update, args=(version,)).start()
 
 	def InitUI(self):
@@ -107,7 +110,7 @@ class ChatWindow(wx.Frame):
 		self.modelList= wx.Choice(self.toolbar, choices=[])
 		self.modelList.Bind(wx.EVT_CHOICE, self.onSelectModel)
 		self.toolbar.AddControl(self.modelList, "Model")
-		self.refreshModels()
+
 		self.copyButton = wx.Button(self.toolbar, label="Copy Last Message")
 		self.toolbar.AddControl(self.copyButton, "Copy Message")
 		self.copyButton.Bind(wx.EVT_BUTTON, self.OnCopyMessage)
@@ -132,8 +135,6 @@ class ChatWindow(wx.Frame):
 		vbox.Add(self.prompt, 2, wx.EXPAND | wx.LEFT | wx.RIGHT, 5)
 		vbox.Add(self.sendButton, 1, wx.EXPAND | wx.ALL, 5)
 		panel.SetSizer(vbox)
-		self.Maximize(True)
-		self.modelList.SetFocus()
 
 	def setStatus(self, text):
 			self.SetStatusText(text)
@@ -160,14 +161,19 @@ class ChatWindow(wx.Frame):
 		threading.Thread(target=self.getModels).start()
 
 	def getModels(self):
-		try: models = self.model.get_models()
+		try:
+			models = self.model.get_models()
 		except Exception as e:
 			displayError(e)
 			return
 		self.modelList.SetItems(models)
-		self.modelList.SetSelection(0)
+		if settings.model_name in models:
+			self.modelList.SetSelection(models.index(settings.model_name))
+		else:
+			self.modelList.SetSelection(0)
 		self.onSelectModel()
 		self.modelList.SetFocus()
+
 
 	def setHost(self, event):
 		dlg = wx.TextEntryDialog(self, "Enter the host address:", "Host", value=settings.host)
@@ -193,7 +199,6 @@ class ChatWindow(wx.Frame):
 		with ParametersDialog(self, 'Generation Parameters') as dialog:
 			if dialog.ShowModal() == wx.ID_OK:
 				dialog.save()
-				self.model.init_llm()
 
 	def OnCopyModel(self, event):
 		with CopyDialog(self, title="Copy Model") as dlg:
@@ -338,7 +343,6 @@ class ChatWindow(wx.Frame):
 			self.copyModelMenu.Enable(settings.llm_name == "Ollama")
 			self.deleteModelMenu.Enable(settings.llm_name == "Ollama")
 			self.model.models = []
-			self.model.init_llm()
 			self.refreshModels()
 
 	def onShowRagSettings(self, event):

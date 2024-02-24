@@ -32,7 +32,6 @@ class Model:
 		self.rag = None
 		self.models = []
 		self.token_counter = TokenCountingHandler(tokenizer=tiktoken.encoding_for_model("gpt-3.5-turbo").encode)
-		self.init_llm()
 
 	def get_models(self):
 		ids = []
@@ -54,7 +53,6 @@ class Model:
 	def init_llm(self):
 		if settings.model_name not in self.models:
 			settings.model_name = self.get_models()[0]
-		print(settings.model_name)
 		options = get_parameters()
 		if settings.llm_name == "Ollama":
 			Settings.llm = Ollama(model=settings.model_name, request_timeout=600, base_url=settings.host, additional_kwargs=options)
@@ -110,12 +108,10 @@ class Model:
 		
 	def setHost(self, host):
 		settings.host = host
-		self.init_llm()
 
 	def setModel(self, name):
 		if settings.model_name == name: return
 		settings.model_name = name
-		self.init_llm()
 
 	def setSystem(self, system):
 		if system == "": return
@@ -126,6 +122,7 @@ class Model:
 			self.messages[0] = system
 
 	def ask(self, content, window):
+		self.init_llm()
 		self.token_counter.reset_counts()
 		if not self.image:
 			Settings.callback_manager = CallbackManager([self.token_counter])
