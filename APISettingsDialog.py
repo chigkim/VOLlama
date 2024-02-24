@@ -1,7 +1,7 @@
 from Settings import settings
 import wx
 
-class RAGParameterDialog(wx.Dialog):
+class APISettingsDialog(wx.Dialog):
 	def __init__(self, parent, title):
 		super().__init__(parent, title=title, size=(400, 400))
 
@@ -10,12 +10,8 @@ class RAGParameterDialog(wx.Dialog):
 
 		# Define parameters and their tooltips
 		self.parameters = {
-			"chunk_size": {"label": "Chunk Size", "control": "SpinCtrl", "min": 1, "max": int(settings.parameters['num_ctx']['value']/2), "initial": settings.chunk_size, "tooltip": "Defines the size of text chunks for indexing. Smaller sizes may improve search granularity."},
-			"chunk_overlap": {"label": "Chunk Overlap", "control": "SpinCtrl", "min": 0, "max": 100, "initial": settings.chunk_overlap, "tooltip": "Overlap between chunks to ensure continuity in search results."},
-			"similarity_top_k": {"label": "Similarity Top K", "control": "SpinCtrl", "min": 1, "max": 100, "initial": settings.similarity_top_k, "tooltip": "The number of top results to consider when evaluating similarity."},
-			"similarity_cutoff": {"label": "Similarity Cutoff", "control": "SpinCtrlDouble", "min": 0.0, "max": 1.0, "inc": 0.01, "initial": settings.similarity_cutoff, "tooltip": "The minimum similarity score for a result to be considered relevant."},
-			"response_mode": {"label": "Response Mode", "control": "Choice", "choices": ['refine', 'compact', 'tree_summarize', 'simple_summarize', 'accumulate', 'compact_accumulate'], "initial": settings.response_mode, "tooltip": "Determines how the indexed results are processed and presented."},
-			"show_context": {"label": "Show Context", "control": "CheckBox", "initial": settings.show_context, "tooltip": "Toggle to show or hide additional context related to your query."},
+			"llm_name": {"label": "LLM", "control": "Choice", "choices": ['Ollama', 'OpenAI', 'Gemini'], "initial": settings.llm_name},
+			"api_key": {"label": "API Key", "control": "Text", "initial": self.get_api_key()},
 		}
 
 		self.controls = {}
@@ -48,12 +44,13 @@ class RAGParameterDialog(wx.Dialog):
 		elif control == "Choice":
 			widget = wx.Choice(self.panel, choices=kwargs["choices"])
 			widget.SetStringSelection(kwargs["initial"])
+		elif control == "Text":
+			widget = wx.TextCtrl(self.panel, value=kwargs["initial"])
 		else:
 			raise ValueError("Unsupported control type")
-
-		# Set tooltip
-		widget.SetToolTip(kwargs["tooltip"])
 		widget.SetName(label)
+		if name == "llm_name":
+			widget.Bind(wx.EVT_CHOICE, self.onSelectLlm)
 		self.controls[name] = widget
 		self.grid_sizer.Add(widget, pos=(row, 1), flag=wx.EXPAND | wx.ALL, border=5)
 
@@ -63,5 +60,20 @@ class RAGParameterDialog(wx.Dialog):
 				value = widget.GetStringSelection()
 			else:
 				value = widget.GetValue()
-			setattr(settings, key, value)
+			if key == "api_key":
+				key = settings.llm_name+"_"+key
+			setattr(settings, key.lower(), value)
 		self.Close()
+
+	def get_api_key(self):
+		if settings.llm_name == "OpenAI":
+			return settings.openai_api_key
+		elif settings.llm_name == "Gemini":
+			return settings.gemini_api_key
+		else: return ""
+
+	def onSelectLlm(self, event):
+		settings.llm_name = self.controls['llm_name'].GetStringSelection()
+		self.controls['api_key'].SetValue(self.get_api_key())
+
+		

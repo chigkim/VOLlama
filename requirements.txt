@@ -3,20 +3,17 @@ pyinstaller
 sounddevice
 soundfile
 wxpython
-numpy
 appdirs
-requests
 PyWin32; sys_platform == 'win32'
 PyObjC; sys_platform == 'darwin'
 llama-index.core
 llama-index-llms-ollama
-llama-index-embeddings-huggingface
+llama-index-multi-modal-llms-ollama
+llama-index-multi-modal-llms-openai
+llama-index-multi-modal-llms-gemini
 llama-index-embeddings-ollama
 llama-index-readers-file
 llama-index-readers-web
-torch
-transformers
-pypdf
 docx2txt
 cryptography
 MainContentExtractor

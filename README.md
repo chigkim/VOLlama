@@ -9,8 +9,9 @@ To use VOLlama, you must first set up Ollama and download a model from Ollama's 
 
 Download and install [Ollama](https://ollama.com/).
 
-To download a model, execute the command below, replacing `openhermes` with a [different model](https://ollama.ai/library) as needed:
+You need to download nomic-embed-text for embedding as well as a model to generate text. Execute the command below, replacing `openhermes` with a [different model](https://ollama.ai/library) as needed:
 ```
+ollama pull nomic-embed-text
 ollama pull openhermes
 ```
 
@@ -25,8 +26,9 @@ Run the command below in the command line to install Ollama:
 docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
 ```
 
-To download a model, execute the command below, replacing `openhermes` with a [different model](https://ollama.ai/library) as needed:
+You need to download nomic-embed-text for embedding as well as a model to generate text. Execute the command below, replacing `openhermes` with a [different model](https://ollama.ai/library) as needed:
 ```
+docker exec ollama ollama pull nomic-embed-text
 docker exec ollama ollama pull openhermes
 ```
 

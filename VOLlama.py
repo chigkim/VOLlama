@@ -1,4 +1,4 @@
-version = 13
+version = 14
 import wx
 import threading
 import sounddevice as sd
@@ -13,6 +13,9 @@ from Speech import Speech
 from Update import check_update
 from Parameters import ParametersDialog
 from RAGParameterDialog import RAGParameterDialog
+from APISettingsDialog import APISettingsDialog
+from Utils import displayError
+from llama_index.core.llms import ChatMessage
 
 def playSD(file):
 	p = os.path.join(os.path.dirname(__file__), file)
@@ -27,7 +30,7 @@ class ChatWindow(wx.Frame):
 		super(ChatWindow, self).__init__(parent, title=title, size=(1920,1080))
 		self.speech = Speech()
 		self.speech.speak("VOLlama is starting...")
-		self.model = Model(host=settings.host)
+		self.model = Model()
 		self.model.setSystem(settings.system)
 		self.InitUI()
 		self.Centre()
@@ -55,8 +58,11 @@ class ChatWindow(wx.Frame):
 		self.speakResponse.Check(settings.speakResponse)
 		self.Bind(wx.EVT_MENU, self.onToggleSpeakResponse, self.speakResponse)
 
-		self.configSpeech = chatMenu.Append(wx.ID_ANY, "Configure Voice")
+		self.configSpeech = chatMenu.Append(wx.ID_ANY, "Configure Voice...")
 		self.Bind(wx.EVT_MENU, self.speech.present_voice_rate_dialog, self.configSpeech)
+
+		self.apiSettingsMenu = chatMenu.Append(wx.ID_ANY, "API Settings...")
+		self.Bind(wx.EVT_MENU, self.displayAPISettingsDialog, self.apiSettingsMenu)
 
 		exitMenu = chatMenu.Append(wx.ID_EXIT)
 		self.Bind(wx.EVT_MENU, self.OnExit, exitMenu)
@@ -66,10 +72,12 @@ class ChatWindow(wx.Frame):
 		self.Bind(wx.EVT_MENU, self.setSystem, setSystemMenu)
 		parametersMenu = advanceMenu.Append(wx.ID_ANY, "Generation Parameters...\tCTRL+ALT+P")
 		self.Bind(wx.EVT_MENU, self.setParameters, parametersMenu)
-		copyModelMenu = advanceMenu.Append(wx.ID_ANY, "Copy Model...")
-		self.Bind(wx.EVT_MENU, self.OnCopyModel, copyModelMenu)
-		deleteModelMenu = advanceMenu.Append(wx.ID_ANY, "Delete Model")
-		self.Bind(wx.EVT_MENU, self.OnDeleteModel, deleteModelMenu)
+		self.copyModelMenu = advanceMenu.Append(wx.ID_ANY, "Copy Model...")
+		self.Bind(wx.EVT_MENU, self.OnCopyModel, self.copyModelMenu)
+		self.deleteModelMenu = advanceMenu.Append(wx.ID_ANY, "Delete Model")
+		self.Bind(wx.EVT_MENU, self.OnDeleteModel, self.deleteModelMenu)
+		self.copyModelMenu.Enable(settings.llm_name == "Ollama")
+		self.deleteModelMenu.Enable(settings.llm_name == "Ollama")
 		hostMenu = advanceMenu.Append(wx.ID_ANY, "Set Host...")
 		self.Bind(wx.EVT_MENU, self.setHost, hostMenu)
 		#logMenu = advanceMenu.Append(wx.ID_ANY, "Log\tCTRL+ALT+L")
@@ -96,8 +104,7 @@ class ChatWindow(wx.Frame):
 		self.SetMenuBar(menuBar)
 		
 		self.toolbar = self.CreateToolBar(wx.TB_HORIZONTAL | wx.NO_BORDER | wx.TB_FLAT)
-		self.models = []
-		self.modelList= wx.Choice(self.toolbar, choices=self.models)
+		self.modelList= wx.Choice(self.toolbar, choices=[])
 		self.modelList.Bind(wx.EVT_CHOICE, self.onSelectModel)
 		self.toolbar.AddControl(self.modelList, "Model")
 		self.refreshModels()
@@ -137,13 +144,14 @@ class ChatWindow(wx.Frame):
 		self.refreshChat(self.model.messages)
 
 	def refreshChat(self, messages):
-		if len(self.model.messages)<2:
-			self.response.Clear()
-			return
-		start = 1 if messages[0]['role'] == 'system' else 0
+		self.response.Clear()
+		start = 1 if messages[0].role == 'system' else 0
+		name = settings.model_name.capitalize()
+		if ":" in name:
+			name = name[:name.index(':')]
 		for message in messages[start:]:
-			role = self.model.name[:self.model.name.index(':')].capitalize() if message['role'] == 'assistant' else "You"
-			text = f"{role}: {message['content']}"
+			role = name if message.role == 'assistant' else "You"
+			text = f"{role}: {message.content}"
 			self.response.AppendText(text)
 			self.response.AppendText(os.linesep)
 
@@ -152,20 +160,17 @@ class ChatWindow(wx.Frame):
 		threading.Thread(target=self.getModels).start()
 
 	def getModels(self):
-		try: models = self.model.client.list()
+		try: models = self.model.get_models()
 		except Exception as e:
-			dialog = wx.MessageDialog(self, str(e), "Error", wx.OK | wx.ICON_ERROR)
-			dialog.ShowModal()
-			dialog.Destroy()
+			displayError(e)
 			return
-		self.models = [model['name'] for model in models['models']]
-		self.modelList.SetItems(self.models)
+		self.modelList.SetItems(models)
 		self.modelList.SetSelection(0)
 		self.onSelectModel()
 		self.modelList.SetFocus()
 
 	def setHost(self, event):
-		dlg = wx.TextEntryDialog(self, "Enter the host address:", "Host", value=self.model.host)
+		dlg = wx.TextEntryDialog(self, "Enter the host address:", "Host", value=settings.host)
 		if dlg.ShowModal() == wx.ID_OK:
 			host = dlg.GetValue()
 			self.model.setHost(host)
@@ -188,24 +193,23 @@ class ChatWindow(wx.Frame):
 		with ParametersDialog(self, 'Generation Parameters') as dialog:
 			if dialog.ShowModal() == wx.ID_OK:
 				dialog.save()
-				self.model.load_parameters()
-	
+				self.model.init_llm()
+
 	def OnCopyModel(self, event):
-		dialog = CopyDialog(self, title="Copy Model")
-		dialog.name.SetValue("copy-"+self.model.name)
-		dialog.modelfile.SetValue(self.model.client.show(self.model.name)['modelfile'])
-		if dialog.ShowModal() == wx.ID_OK:
-			name = dialog.name.GetValue()
-			modelfile = dialog.modelfile.GetValue()
-			result = self.model.client.create(name, modelfile=modelfile, stream=False)
-			self.refreshModels()
-		dialog.Destroy()
+		with CopyDialog(self, title="Copy Model") as dlg:
+			dlg.name.SetValue("copy-"+settings.model_name)
+			dlg.modelfile.SetValue(self.model.modelfile())
+			if dlg.ShowModal() == wx.ID_OK:
+				name = dlg.name.GetValue()
+				modelfile = dlg.modelfile.GetValue()
+				self.model.create(name, modelfile)
+				self.refreshModels()
 
 	def OnDeleteModel(self, event):
-		with wx.MessageDialog(self, f"Are you sure you want to delete {self.model.name}?", 'Delete', wx.YES_NO|wx.ICON_QUESTION) as dlg:
+		with wx.MessageDialog(self, f"Are you sure you want to delete {settings.model_name}?", 'Delete', wx.YES_NO|wx.ICON_QUESTION) as dlg:
 			dlg.SetYesNoLabels("Yes", "No")
 			if dlg.ShowModal() == wx.ID_YES:
-				self.model.client.delete(self.model.name)
+				self.model.delete()
 				self.refreshModels()
 
 	def OnNewChat(self, event):
@@ -213,11 +217,9 @@ class ChatWindow(wx.Frame):
 		self.model.messages = []
 		self.model.setSystem(settings.system)
 		self.response.Clear()
-		self.folder = None
-		self.url = None
 
 	def OnCopyMessage(self, event):
-		message = self.model.messages[-1]['content'].strip()
+		message = self.model.messages[-1].content.strip()
 		if wx.TheClipboard.Open():
 			wx.TheClipboard.SetData(wx.TextDataObject(message))
 			wx.TheClipboard.Close()
@@ -271,6 +273,7 @@ class ChatWindow(wx.Frame):
 			dirname = dlg.GetDirectory()
 			with codecs.open(os.path.join(dirname, filename), 'r', 'utf-8') as f:
 				messages = json.load(f)
+				messages = [ChatMessage(role=m['role'], content=m['content']) for m in messages]
 				self.model.messages = messages
 				self.refreshChat(messages)
 
@@ -306,25 +309,37 @@ class ChatWindow(wx.Frame):
 			threading.Thread(target=self.model.startRag, args=(url, self.setStatus)).start()
 
 	def onSave(self, e):
-		name = self.model.name[:self.model.name.index(":")].capitalize()
+		name = settings.model_name.capitalize()
+		if ":" in name:
+			name = name[:name.index(":")]
 		with wx.FileDialog(self, "Save", "", name+".json", "*.json", style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT) as dlg:
 			if dlg.ShowModal() == wx.ID_CANCEL: return wx.ID_CANCEL
 			filename = dlg.GetFilename()
 			dirname = dlg.GetDirectory()
+			messages = [{"role":m.role, "content":m.content} for m in self.model.messages]
 			with codecs.open(os.path.join(dirname, filename), 'w', 'utf-8') as f:
-				json.dump(self.model.messages, f, indent="\t")
+				json.dump(messages, f, indent="\t")
 
 	def loadIndex(self,e):
 		with wx.DirDialog(None, "Choose a folder with Index:", style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST) as dlg:
 			if dlg.ShowModal() == wx.ID_CANCEL: return
 			folder = dlg.GetPath()
-			self.model.rag.load_index(folder)
-
+			self.model.load_index(folder)
+			
 	def saveIndex(self,e):
 		with wx.DirDialog(None, "Choose a folder to Save Index:", style=wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST) as dlg:
 			if dlg.ShowModal() == wx.ID_CANCEL: return
 			folder = dlg.GetPath()
 			self.model.rag.save_index(folder)
+
+	def displayAPISettingsDialog(self, event):
+		with APISettingsDialog(self, "API Settings") as dlg:
+			dlg.ShowModal()
+			self.copyModelMenu.Enable(settings.llm_name == "Ollama")
+			self.deleteModelMenu.Enable(settings.llm_name == "Ollama")
+			self.model.models = []
+			self.model.init_llm()
+			self.refreshModels()
 
 	def onShowRagSettings(self, event):
 		with RAGParameterDialog(self, "RAG Settings") as dlg:

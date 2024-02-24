@@ -1,6 +1,9 @@
 # Change log
 
-* Choices for embed model: small, base, large
+* Embedding with Ollama
+* Make sure to download nomic-embed-text: ollama pull nomic-embed-text
+* If you have saved index, you need to index and save again.
+* Support for OpenAI and Gemini
 * Better error message if no text found from semantic search.
 * Able to index individual files
 * Fixed bug when index gets reset when changing model

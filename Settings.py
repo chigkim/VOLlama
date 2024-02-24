@@ -1,30 +1,46 @@
+from cryptography.fernet import Fernet
 import appdirs
 import os
 import json
 import threading
+def encrypt(key, value):
+	# Convert the string representation of the key back to bytes
+	key_bytes = key.encode()
+	cipher_suite = Fernet(key_bytes)
+	# Encrypt the value, which is then encoded to a string for easy handling
+	encrypted_value = cipher_suite.encrypt(value.encode()).decode()
+	return encrypted_value
+
+def decrypt(key, encrypted_value):
+	key_bytes = key.encode()
+	encrypted_value_bytes = encrypted_value.encode()
+	cipher_suite = Fernet(key_bytes)
+	decrypted_value = cipher_suite.decrypt(encrypted_value_bytes).decode()
+	return decrypted_value
+
 class DotDict:
-    def __init__(self, dictionary=None, parent=None):
-        self.__dict__["_parent"] = parent  # Reference to the SettingsManager for autosave.
-        if dictionary is None:
-            dictionary = {}
-        for key, value in dictionary.items():
-            # Directly assign the value without converting it to DotDict.
-            self.__dict__[key] = value
+	def __init__(self, dictionary=None, parent=None):
+		self.__dict__["_parent"] = parent  # Reference to the SettingsManager for autosave.
+		if dictionary is None:
+			dictionary = {}
+		for key, value in dictionary.items():
+			# Directly assign the value without converting it to DotDict.
+			self.__dict__[key] = value
 
-    def __setattr__(self, key, value):
-        # Directly assign the value without checking for dict type to convert.
-        self.__dict__[key] = value
-        if "_parent" in self.__dict__ and self._parent:
-            self._parent.save_settings()
+	def __setattr__(self, key, value):
+		# Directly assign the value without checking for dict type to convert.
+		self.__dict__[key] = value
+		if "_parent" in self.__dict__ and self._parent:
+			self._parent.save_settings()
 
-    def to_dict(self):
-        dict_ = {}
-        for key, value in self.__dict__.items():
-            if key == "_parent":
-                continue  # Skip the parent reference when converting to dict.
-            # Directly assign the value without converting from DotDict to dict.
-            dict_[key] = value
-        return dict_
+	def to_dict(self):
+		dict_ = {}
+		for key, value in self.__dict__.items():
+			if key == "_parent":
+				continue  # Skip the parent reference when converting to dict.
+			# Directly assign the value without converting from DotDict to dict.
+			dict_[key] = value
+		return dict_
 
 class SettingsManager:
 	_instance = None
@@ -49,12 +65,19 @@ class SettingsManager:
 
 	def save_settings(self):
 		settings_dict = self.settings.to_dict()
+		for key, value in settings_dict.items():
+			if "key" in key and value:
+				settings_dict[key] = encrypt(settings_dict['secret'], value)
 		with open(self.settings_file_path, 'w') as file:
 			json.dump(settings_dict, file, indent='\t')
 
 	def load_settings(self):
 		default_dict = {
 			'host': 'http://localhost:11434',
+			"llm_name": "Ollama",
+			"model_name": "",
+			"openai_api_key": "",
+			"gemini_api_key": "",
 			'system': "",
 			'speakResponse': False,
 			'voice': 'unknown',
@@ -65,7 +88,6 @@ class SettingsManager:
 			'similarity_top_k':2,
 			'similarity_cutoff':0.0,
 			'response_mode': 'refine',
-			'embed_model': 'base',
 			'show_context': False
 		}
 		try:
@@ -78,7 +100,15 @@ class SettingsManager:
 		for key, value in default_dict.items():
 			if key not in settings_dict:
 				settings_dict[key] = value
+		if "secret" not in settings_dict:
+			secret = Fernet.generate_key().decode()
+			settings_dict['secret'] = secret
+		else: secret = settings_dict['secret']
 
+		for key, value in settings_dict.items():
+			if "key" in key and value:
+				settings_dict[key] = decrypt(secret, value)
+			
 		self.settings = DotDict(settings_dict, parent=self)
 		self.save_settings()  # Save settings, ensuring any additions are persisted
 		return self.settings
