@@ -5,8 +5,6 @@ An accessible chat client for Ollama
 
 To use VOLlama, you must first set up Ollama and download a model from Ollama's library. Follow these steps:
 
-### Mac
-
 Download and install [Ollama](https://ollama.com/).
 
 You need to download nomic-embed-text for embedding as well as a model to generate text. Execute the command below, replacing `openhermes` with a [different model](https://ollama.ai/library) as needed:
@@ -17,9 +15,7 @@ ollama pull openhermes
 
 Finally, Run VOLlama.
 
-### Windows
-
-Instead of using Ollama Windows preview build, if you use Ollama with Docker, you might get a faster speed up to  8x for now.
+## Docker
 
 Run the command below in the command line to install Ollama:
 ```
