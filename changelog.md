@@ -1,5 +1,7 @@
 # Change log
 
+* Fixed setting history index incorrectly when there's a system message.
+* Changed send button to edit when editing history.
 * Paste last cleared user message into the prompt for editing or simply resending.
 * Edit history: alt+(or option on mac)+up/down
 * Embedding with Ollama

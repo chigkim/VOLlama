@@ -1,4 +1,4 @@
-version = 16
+version = 17
 import wx
 import threading
 import sounddevice as sd
@@ -34,9 +34,9 @@ class ChatWindow(wx.Frame):
 		self.Maximize(True)
 		self.Centre()
 		self.Show()
-		self.historyIndex = 0
 		self.model = Model()
 		self.model.setSystem(settings.system)
+		self.historyIndex = len(self.model.messages)
 		self.refreshModels()
 		self.prompt.SetFocus()
 		threading.Thread(target=check_update, args=(version,)).start()
@@ -199,6 +199,8 @@ class ChatWindow(wx.Frame):
 		if dlg.ShowModal() == wx.ID_OK:
 			system = dlg.GetValue()
 			self.model.setSystem(system)
+			if len(self.model.messages) == 1:
+				self.historyIndex = 1
 			settings.system = system
 		dlg.Destroy()
 
@@ -260,6 +262,7 @@ class ChatWindow(wx.Frame):
 			self.historyIndex = 0
 		self.prompt.SetValue(self.model.messages[self.historyIndex].content)
 		self.prompt.SetInsertionPointEnd()
+		self.sendButton.SetLabel("Edit")
 
 	def OnHistoryDown(self, event):
 		self.historyIndex += 1
@@ -269,8 +272,10 @@ class ChatWindow(wx.Frame):
 		if self.historyIndex < length:
 			self.prompt.SetValue(self.model.messages[self.historyIndex].content)
 			self.prompt.SetInsertionPointEnd()
+			self.sendButton.SetLabel("Edit")
 		else:
 			self.prompt.SetValue("")
+			self.sendButton.SetLabel("Send")
 
 	def FocusOnModelList(self, event):
 		self.modelList.SetFocus()
