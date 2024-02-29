@@ -141,8 +141,14 @@ class ChatWindow(wx.Frame):
 			self.SetStatusText(text)
 
 	def clearLast(self, event):
-		if len(self.model.messages)<2: return
+		if len(self.model.messages)==0: return
+		if len(self.model.messages)==1 and self.model.messages[0].role == 'system': return
+		if self.model.messages[-1].role == 'user':
+			self.prompt.SetValue(self.model.messages[-1].content)
+		else:
+			self.prompt.SetValue("")
 		self.model.messages = self.model.messages[:-1]
+		self.historyIndex = len(self.model.messages)
 		self.refreshChat()
 
 	def refreshChat(self):

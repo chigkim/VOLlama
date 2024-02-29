@@ -1,5 +1,6 @@
 # Change log
 
+* Paste last cleared user message into the prompt for editing or simply resending.
 * Edit history: alt+(or option on mac)+up/down
 * Embedding with Ollama
 * Make sure to download nomic-embed-text: ollama pull nomic-embed-text
