@@ -1,4 +1,4 @@
-version = 14
+version = 15
 import wx
 import threading
 import sounddevice as sd
@@ -34,6 +34,7 @@ class ChatWindow(wx.Frame):
 		self.Maximize(True)
 		self.Centre()
 		self.Show()
+		self.historyIndex = 0
 		self.model = Model()
 		self.model.setSystem(settings.system)
 		self.refreshModels()
@@ -141,16 +142,16 @@ class ChatWindow(wx.Frame):
 
 	def clearLast(self, event):
 		if len(self.model.messages)<2: return
-		self.model.messages = self.model.messages[:-2]
-		self.refreshChat(self.model.messages)
+		self.model.messages = self.model.messages[:-1]
+		self.refreshChat()
 
-	def refreshChat(self, messages):
+	def refreshChat(self):
 		self.response.Clear()
-		start = 1 if messages[0].role == 'system' else 0
+		start = 1 if self.model.messages[0].role == 'system' else 0
 		name = settings.model_name.capitalize()
 		if ":" in name:
 			name = name[:name.index(':')]
-		for message in messages[start:]:
+		for message in self.model.messages[start:]:
 			role = name if message.role == 'assistant' else "You"
 			text = f"{role}: {message.content}"
 			self.response.AppendText(text)
@@ -236,12 +237,34 @@ class ChatWindow(wx.Frame):
 		shortcuts = {
 			"model":(wx.ACCEL_CTRL, ord('l'), wx.NewIdRef()),
 			"prompt":(wx.ACCEL_NORMAL, wx.WXK_ESCAPE, wx.NewIdRef()),
+			"history_up": (wx.ACCEL_ALT, wx.WXK_UP, wx.NewIdRef()),
+			"history_down": (wx.ACCEL_ALT, wx.WXK_DOWN, wx.NewIdRef()),
 		}
 		accelEntries = [v for k,v in shortcuts.items()]
 		accelTable = wx.AcceleratorTable(accelEntries)
 		self.SetAcceleratorTable(accelTable)
 		self.Bind(wx.EVT_MENU, self.FocusOnModelList, id=shortcuts['model'][2])
 		self.Bind(wx.EVT_MENU, self.FocusOnPrompt, id=shortcuts['prompt'][2])
+		self.Bind(wx.EVT_MENU, self.OnHistoryUp, id=shortcuts['history_up'][2])
+		self.Bind(wx.EVT_MENU, self.OnHistoryDown, id=shortcuts['history_down'][2])
+
+	def OnHistoryUp(self, event):
+		self.historyIndex -= 1
+		if self.historyIndex<0:
+			self.historyIndex = 0
+		self.prompt.SetValue(self.model.messages[self.historyIndex].content)
+		self.prompt.SetInsertionPointEnd()
+
+	def OnHistoryDown(self, event):
+		self.historyIndex += 1
+		length = len(self.model.messages)
+		if self.historyIndex>length:
+			self.historyIndex = length
+		if self.historyIndex < length:
+			self.prompt.SetValue(self.model.messages[self.historyIndex].content)
+			self.prompt.SetInsertionPointEnd()
+		else:
+			self.prompt.SetValue("")
 
 	def FocusOnModelList(self, event):
 		self.modelList.SetFocus()
@@ -254,6 +277,7 @@ class ChatWindow(wx.Frame):
 	def onStopGeneration(self):
 		play("receive.wav")
 		self.sendButton.SetLabel("Send")
+		self.historyIndex = len(self.model.messages)
 
 	def OnSend(self, event):
 
@@ -264,8 +288,13 @@ class ChatWindow(wx.Frame):
 		if not self.model.generate:
 			message = self.prompt.GetValue()
 			if message:
-				self.response.AppendText("You: " + message + "\n")
 				self.prompt.SetValue("")
+				if self.historyIndex<len(self.model.messages):
+					self.model.messages[self.historyIndex].content = message
+					self.refreshChat()
+					self.onStopGeneration()
+					return
+				self.response.AppendText("You: " + message + "\n")
 				self.sendButton.SetLabel("Stop")
 				threading.Thread(target=processMessage, args=(message,)).start()
 		else:
@@ -280,7 +309,7 @@ class ChatWindow(wx.Frame):
 				messages = json.load(f)
 				messages = [ChatMessage(role=m['role'], content=m['content']) for m in messages]
 				self.model.messages = messages
-				self.refreshChat(messages)
+				self.refreshChat()
 
 	def onUploadImage(self,e):
 		with wx.FileDialog(self, "Choose an image", wildcard="Image files (*.jpg;*.jpeg;*.png)|*.jpg;*.jpeg;*.png", style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST) as dlg:

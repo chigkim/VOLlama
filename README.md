@@ -40,11 +40,12 @@ docker start ollama
 
 ## Shortcuts
 
-On Mac, press command key instead of control key.
+On Mac, press command key instead of control key an option instead of alt.
 
 * Control+L: Focus on the model list.
 * Control+Enter: Insert a new line.
 * Esc: Shift focus to the prompt.
+* Edit history: alt+up/down
 
 If you're operating Ollama on a different machine, you can configure the host address in the advanced menu.
 

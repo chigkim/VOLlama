@@ -1,5 +1,6 @@
 # Change log
 
+* Edit history: alt+(or option on mac)+up/down
 * Embedding with Ollama
 * Make sure to download nomic-embed-text: ollama pull nomic-embed-text
 * If you have saved index, you need to index and save again.
