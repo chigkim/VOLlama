@@ -1,4 +1,4 @@
-version = 17
+version = 18
 import wx
 import threading
 import sounddevice as sd
@@ -141,13 +141,12 @@ class ChatWindow(wx.Frame):
 			self.SetStatusText(text)
 
 	def clearLast(self, event):
-		if len(self.model.messages)==0: return
-		if len(self.model.messages)==1 and self.model.messages[0].role == 'system': return
-		if self.model.messages[-1].role == 'user':
-			self.prompt.SetValue(self.model.messages[-1].content)
-		else:
+		if len(self.model.messages)==0 | (len(self.model.messages)==1 and self.model.messages[0].role == 'system'):
 			self.prompt.SetValue("")
-		self.model.messages = self.model.messages[:-1]
+			return
+		delete=-1 if self.model.messages[-1].role == 'user' else -2
+		self.prompt.SetValue(self.model.messages[delete].content)
+		self.model.messages = self.model.messages[:delete]
 		self.historyIndex = len(self.model.messages)
 		self.refreshChat()
 
@@ -260,6 +259,9 @@ class ChatWindow(wx.Frame):
 		self.historyIndex -= 1
 		if self.historyIndex<0:
 			self.historyIndex = 0
+		if self.model.messages[self.historyIndex].role == "system":
+			self.historyIndex = 1
+			return
 		self.prompt.SetValue(self.model.messages[self.historyIndex].content)
 		self.prompt.SetInsertionPointEnd()
 		self.sendButton.SetLabel("Edit")
@@ -284,6 +286,10 @@ class ChatWindow(wx.Frame):
 		self.model.generate = False
 		self.speech.stop()
 		self.prompt.SetFocus()
+		self.historyIndex = len(self.model.messages)
+		self.prompt.SetValue("")
+		self.sendButton.SetLabel("Send")
+
 
 	def onStopGeneration(self):
 		play("receive.wav")
@@ -303,7 +309,6 @@ class ChatWindow(wx.Frame):
 				if self.historyIndex<len(self.model.messages):
 					self.model.messages[self.historyIndex].content = message
 					self.refreshChat()
-					self.onStopGeneration()
 					return
 				self.response.AppendText("You: " + message + "\n")
 				self.sendButton.SetLabel("Stop")

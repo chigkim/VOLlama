@@ -1,6 +1,9 @@
 # Change log
 
-* Fixed setting history index incorrectly when there's a system message.
+* Clear last message clears last user message as well as model's response.
+* Editing the message history does not move the history cursor to the bottom, so you can keep editing another message.
+* Pressing esc moves history cursor to the bottom for new message.
+* Fixed incorrect history cursor when there's a system message.
 * Changed send button to edit when editing history.
 * Paste last cleared user message into the prompt for editing or simply resending.
 * Edit history: alt+(or option on mac)+up/down
