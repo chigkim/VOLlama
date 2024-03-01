@@ -8,9 +8,10 @@ PyWin32; sys_platform == 'win32'
 PyObjC; sys_platform == 'darwin'
 llama-index.core
 llama-index-llms-ollama
-llama-index-multi-modal-llms-ollama
+llama-index-llms-gemini
 llama-index-multi-modal-llms-openai
-llama-index-multi-modal-llms-gemini
+#llama-index-multi-modal-llms-ollama
+#llama-index-multi-modal-llms-gemini
 llama-index-embeddings-ollama
 llama-index-readers-file
 llama-index-readers-web
