@@ -29,7 +29,7 @@ class RAG:
 		try:
 			start = time()
 			documents = MainContentExtractorReader().load_data([url])
-			self.index = VectorStoreIndex.from_documents(documents)
+			self.index = VectorStoreIndex.from_documents(documents, show_progress=True)
 			message = f"Indexed URL into {len(documents)} chunks in {time()-start:0.2f} seconds."
 			displayInfo("Index", message)
 			setStatus(message)
@@ -45,7 +45,7 @@ class RAG:
 			else:
 				documents = SimpleDirectoryReader(input_files=path).load_data()
 
-			self.index = VectorStoreIndex.from_documents(documents)
+			self.index = VectorStoreIndex.from_documents(documents, show_progress=True)
 			message = f"Indexed folder into {len(documents)} chunks in {time()-start:0.2f} seconds."
 			displayInfo("Index", message)
 			setStatus(message)

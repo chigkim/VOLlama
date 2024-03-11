@@ -337,7 +337,7 @@ class ChatWindow(wx.Frame):
 			self.prompt.SetFocus()
 
 	def onIndexFile(self, event):
-		wildcard = "Supported Files (*.txt|*.pdf|*.docx|*.pptx|*.ppt|*.pptm|*.hwp|*.csv|*.epub|*.md|*.ipynb|*.mbox|*.jpg|*.png|*.jpeg|*.mp3|*.mp4)|*.txt|*.pdf|*.docx|*.pptx|*.ppt|*.pptm|**.hwp|*.csv|*.epub|*.md|*.ipynb|*.mbox|.jpg|*.png|*.jpeg|*.mp3|*.mp4"
+		wildcard = "Supported Files (*.txt;*.pdf;*.docx;*.pptx;*.ppt;*.pptm;*.hwp;*.csv;*.epub;*.md;*.ipynb;*.mbox;*.jpg;*.png;*.jpeg;*.mp3;*.mp4)|*.txt;*.pdf;*.docx;*.pptx;*.ppt;*.pptm;*.hwp;*.csv;*.epub;*.md;*.ipynb;*.mbox;*.jpg;*.png;*.jpeg;*.mp3;*.mp4"
 		with wx.FileDialog(self, "Choose a file", wildcard=wildcard, style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST|wx.FD_MULTIPLE) as fileDialog:
 			if fileDialog.ShowModal() == wx.ID_CANCEL: return
 			paths = fileDialog.GetPaths()
