@@ -1,5 +1,6 @@
 # Change log
 
+* Fixed file types when opening a file to index.
 * Clear last message clears last user message as well as model's response.
 * Editing the message history does not move the history cursor to the bottom, so you can keep editing another message.
 * Pressing esc moves history cursor to the bottom for new message.
