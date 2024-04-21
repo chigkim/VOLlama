@@ -16,7 +16,7 @@ class Speech:
 		self.os = platform.system()
 		self.queue = queue.Queue()
 		self.synth = self.setup_synth()
-		self.voice = None
+		self.voice = settings.voice
 		self.rate = 0.6
 		if settings.voice != "unknown":
 			self.set_voice(settings.voice)

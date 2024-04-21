@@ -1,5 +1,7 @@
 # Change log
 
+* Fixed a bug for configure voice not opening in some situations.
+* Default parameters match default parameters from llama.cpp.
 * Fixed file types when opening a file to index.
 * Clear last message clears last user message as well as model's response.
 * Editing the message history does not move the history cursor to the bottom, so you can keep editing another message.

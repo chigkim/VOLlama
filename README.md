@@ -7,36 +7,18 @@ To use VOLlama, you must first set up Ollama and download a model from Ollama's 
 
 Download and install [Ollama](https://ollama.com/).
 
-You need to download nomic-embed-text for embedding as well as a model to generate text. Execute the command below, replacing `openhermes` with a [different model](https://ollama.ai/library) as needed:
+You need a model to generate text, and execute the command below to download a model. If you want to use a [different model](https://ollama.ai/library), replace llama3` with your desired model.
+
+```
+ollama pull llama3
+```
+
+If you want to use the rag feature, you need to download nomic-embed-text for embedding.
 ```
 ollama pull nomic-embed-text
-ollama pull openhermes
 ```
 
 Finally, Run VOLlama.
-
-## Docker
-
-Run the command below in the command line to install Ollama:
-```
-docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
-```
-
-You need to download nomic-embed-text for embedding as well as a model to generate text. Execute the command below, replacing `openhermes` with a [different model](https://ollama.ai/library) as needed:
-```
-docker exec ollama ollama pull nomic-embed-text
-docker exec ollama ollama pull openhermes
-```
-
-To stop Ollama, execute the command below.
-```
-docker stop ollama
-```
-
-To run Ollama again, execute the command below.
-```
-docker start ollama
-```
 
 ## Shortcuts
 
@@ -113,3 +95,32 @@ For Mac users, it's crucial to disable smart quotes before opening the copy mode
 * simple_summarize: Truncates all text chunks to fit into a single LLM prompt. Good for quick summarization purposes, but may lose detail due to truncation.
 * accumulate: Given a set of text chunks and the query, apply the query to each text chunk while accumulating the responses into an array. Returns a concatenated string of all responses. Good for when you need to run the same query separately against each text chunk.
 * compact_accumulate: The same as accumulate, but will “compact” each LLM prompt similar to compact, and run the same query against each text chunk.
+
+## Docker (Optional)
+
+If you want to use Docker to run ollama instead, run the command below in the command line to install Ollama:
+```
+docker run -d -v ollama:/root/.ollama -p 11434:11434 --name ollama ollama/ollama
+```
+
+You need a model to generate text, and execute the command below to download a model. If you want to use a [different model](https://ollama.ai/library), replace llama3` with your desired model.
+```
+docker exec ollama ollama pull llama3
+```
+
+If you want to use the rag feature, you need to download nomic-embed-text for embedding.
+```
+docker exec ollama ollama pull nomic-embed-text
+```
+
+To stop Ollama, execute the command below.
+```
+docker stop ollama
+```
+
+To run Ollama again, execute the command below.
+```
+docker start ollama
+```
+
+
