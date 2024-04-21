@@ -31,7 +31,7 @@
 			"range": "0.0-2.0"
 		},
 		"repeat_penalty": {
-			"value": 1.1,
+			"value": 1.0,
 			"description": "Higher value will penalize repetitions more strongly.",
 			"range": "0.0-2.0"
 		},
@@ -46,7 +46,7 @@
 			"range": "-1-100"
 		},
 		"top_p": {
-			"value": 0.9,
+			"value": 0.95,
 			"description": "Works together with top-k. A higher value will lead to more diverse text, while a lower value will generate more focused and conservative text.",
 			"range": "0.0-1.0"
 		},
