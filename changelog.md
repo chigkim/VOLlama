@@ -66,3 +66,5 @@ It is very important for Mac users to turn off smart quotes before opening copy 
 
 * MacOS 13 Ventura or later: System settings > Keyboard > Edit input sorce > turn off smart quotes
 * Before Ventura: System preferences > keyboard > text > uncheck smart quotes
+
+## Download
