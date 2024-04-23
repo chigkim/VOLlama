@@ -27,11 +27,19 @@ class RAG:
 	def loadUrl(self, url, setStatus):
 		try:
 			start = time()
-			try: documents = MainContentExtractorReader().load_data([url])
+			try:
+				documents = MainContentExtractorReader().load_data([url])
+				if len(documents)==0 or documents[0].text.strip()=="":
+					raise(Exception("nothing found."))
 			except:
-				try: documents = TrafilaturaWebReader().load_data([url])
+				try:
+					documents = TrafilaturaWebReader().load_data([url])
+					if len(documents)==0 or documents[0].text.strip()=="":
+						raise(Exception("nothing found."))
 				except:
 					documents = BeautifulSoupWebReader().load_data([url])
+					if len(documents)==0 or documents[0].text.strip()=="":
+						raise(Exception("nothing found."))
 			self.index = VectorStoreIndex.from_documents(documents) # , show_progress=True
 			message = f"Indexed URL into {len(documents)} chunks in {time()-start:0.2f} seconds."
 			displayInfo("Index", message)
