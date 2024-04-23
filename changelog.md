@@ -1,5 +1,5 @@
 # Change log
-
+* Use simpler BeautifulSoupWebReader
 * Fixed a bug for configure voice not opening in some situations.
 * Default parameters match default parameters from llama.cpp.
 * Fixed file types when opening a file to index.

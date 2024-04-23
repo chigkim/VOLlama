@@ -2,7 +2,7 @@ from Settings import settings
 from llama_index.core import VectorStoreIndex, StorageContext, load_index_from_storage, SimpleDirectoryReader, Settings, get_response_synthesizer
 from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.llms.ollama import Ollama
-from llama_index.readers.web import MainContentExtractorReader# TrafilaturaWebReader, BeautifulSoupWebReader, SimpleWebPageReader
+from llama_index.readers.web import BeautifulSoupWebReader # MainContentExtractorReader, TrafilaturaWebReader, BeautifulSoupWebReader, SimpleWebPageReader
 from llama_index.core.postprocessor import SimilarityPostprocessor
 from Utils import displayError, displayInfo
 from time import time
@@ -28,8 +28,8 @@ class RAG:
 	def loadUrl(self, url, setStatus):
 		try:
 			start = time()
-			documents = MainContentExtractorReader().load_data([url])
-			self.index = VectorStoreIndex.from_documents(documents, show_progress=True)
+			documents = BeautifulSoupWebReader().load_data([url])
+			self.index = VectorStoreIndex.from_documents(documents) # , show_progress=True
 			message = f"Indexed URL into {len(documents)} chunks in {time()-start:0.2f} seconds."
 			displayInfo("Index", message)
 			setStatus(message)
@@ -45,7 +45,7 @@ class RAG:
 			else:
 				documents = SimpleDirectoryReader(input_files=path).load_data()
 
-			self.index = VectorStoreIndex.from_documents(documents, show_progress=True)
+			self.index = VectorStoreIndex.from_documents(documents) # , show_progress=True
 			message = f"Indexed folder into {len(documents)} chunks in {time()-start:0.2f} seconds."
 			displayInfo("Index", message)
 			setStatus(message)
