@@ -1,5 +1,6 @@
 # Change log
-* Use simpler BeautifulSoupWebReader
+
+* Retrieve  webpages better.
 * Fixed a bug for configure voice not opening in some situations.
 * Default parameters match default parameters from llama.cpp.
 * Fixed file types when opening a file to index.
@@ -66,3 +67,5 @@ It is very important for Mac users to turn off smart quotes before opening copy 
 
 * MacOS 13 Ventura or later: System settings > Keyboard > Edit input sorce > turn off smart quotes
 * Before Ventura: System preferences > keyboard > text > uncheck smart quotes
+
+## Download
