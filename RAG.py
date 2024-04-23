@@ -2,7 +2,7 @@ from Settings import settings
 from llama_index.core import VectorStoreIndex, StorageContext, load_index_from_storage, SimpleDirectoryReader, Settings, get_response_synthesizer
 from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.llms.ollama import Ollama
-from llama_index.readers.web import BeautifulSoupWebReader # MainContentExtractorReader, TrafilaturaWebReader, BeautifulSoupWebReader, SimpleWebPageReader
+from llama_index.readers.web import MainContentExtractorReader, TrafilaturaWebReader, BeautifulSoupWebReader
 from llama_index.core.postprocessor import SimilarityPostprocessor
 from Utils import displayError, displayInfo
 from time import time
@@ -10,8 +10,7 @@ import os
 
 class RAG:
 	def __init__(self):
-		Settings.embed_model = OllamaEmbedding(base_url=settings.host, model_name="nomic-embed-text")
-		#Settings.embed_model = HuggingFaceEmbedding(model_name=f"BAAI/bge-{settings.embed_model}-en-v1.5")
+		Settings.embed_model = OllamaEmbedding(base_url=settings.host, model_name="nomic-embed-text") # snowflake-arctic-embed
 		self.index = None
 
 	def load_index(self, folder):
@@ -28,7 +27,11 @@ class RAG:
 	def loadUrl(self, url, setStatus):
 		try:
 			start = time()
-			documents = BeautifulSoupWebReader().load_data([url])
+			try: documents = MainContentExtractorReader().load_data([url])
+			except:
+				try: documents = TrafilaturaWebReader().load_data([url])
+				except:
+					documents = BeautifulSoupWebReader().load_data([url])
 			self.index = VectorStoreIndex.from_documents(documents) # , show_progress=True
 			message = f"Indexed URL into {len(documents)} chunks in {time()-start:0.2f} seconds."
 			displayInfo("Index", message)
