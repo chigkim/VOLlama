@@ -51,7 +51,9 @@ class RAG:
 					documents = BeautifulSoupWebReader().load_data([url])
 					if len(documents)==0 or documents[0].text.strip()=="":
 						raise(Exception("nothing found."))
-			self.index = VectorStoreIndex.from_documents(documents) # , show_progress=True
+
+			#self.index = VectorStoreIndex.from_documents(documents) # , show_progress=True
+			self.index = self.build_index(documents, setStatus)
 			message = f"Indexed URL into {len(documents)} chunks in {time()-start:0.2f} seconds."
 			displayInfo("Index", message)
 			setStatus(message)

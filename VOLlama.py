@@ -1,4 +1,4 @@
-version = 22
+version = 23
 import wx
 import threading
 import sounddevice as sd
@@ -42,7 +42,7 @@ class ChatWindow(wx.Frame):
 		threading.Thread(target=check_update, args=(version,)).start()
 
 	def InitUI(self):
-		self.CreateStatusBar()
+		#self.CreateStatusBar()
 		chatMenu= wx.Menu()
 		newMenu = chatMenu.Append(wx.ID_NEW)
 		self.Bind(wx.EVT_MENU, self.OnNewChat, newMenu)
@@ -130,15 +130,18 @@ class ChatWindow(wx.Frame):
 		self.prompt.Bind(wx.EVT_TEXT_ENTER, self.OnSend)
 		self.sendButton = wx.Button(panel, label='Send')
 		self.sendButton.Bind(wx.EVT_BUTTON, self.OnSend)
+		self.status = wx.StaticText(panel, label="READY!")
 
 		vbox = wx.BoxSizer(wx.VERTICAL)
-		vbox.Add(self.response, 7, wx.EXPAND | wx.ALL, 5)
-		vbox.Add(self.prompt, 2, wx.EXPAND | wx.LEFT | wx.RIGHT, 5)
-		vbox.Add(self.sendButton, 1, wx.EXPAND | wx.ALL, 5)
+		vbox.Add(self.response, 10, wx.EXPAND | wx.ALL, 5)
+		vbox.Add(self.prompt, 3, wx.EXPAND |wx.ALL, 5)
+		vbox.Add(self.sendButton, 1, wx.ALIGN_RIGHT|wx.ALL, 5)
+		vbox.Add(self.status, 1, wx.ALIGN_LEFT|wx.ALL|wx.EXPAND, 5)
 		panel.SetSizer(vbox)
 
 	def setStatus(self, text):
-			self.SetStatusText(text)
+			#self.SetStatusText(text)
+			self.status.SetLabel(text)
 
 	def clearLast(self, event):
 		if len(self.model.messages)==0 | (len(self.model.messages)==1 and self.model.messages[0].role == 'system'):

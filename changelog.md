@@ -1,4 +1,7 @@
 # Change log
+
+* Created  an accessible status label for Mac.
+* Reports progress during embedding.
 * Deploy 3 different web readers to retrieve webpages better.
 * Fixed a bug for configure voice not opening in some situations.
 * Default parameters match default parameters from llama.cpp.
