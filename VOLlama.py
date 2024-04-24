@@ -128,15 +128,21 @@ class ChatWindow(wx.Frame):
 		self.response = wx.TextCtrl(panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
 		self.prompt = wx.TextCtrl(panel, style=wx.TE_PROCESS_ENTER|wx.TE_MULTILINE)
 		self.prompt.Bind(wx.EVT_TEXT_ENTER, self.OnSend)
-		self.sendButton = wx.Button(panel, label='Send')
+
+		pnl = wx.Panel(panel)
+		self.status = wx.StaticText(pnl, label="READY!")
+		self.sendButton = wx.Button(pnl, label='Send')
 		self.sendButton.Bind(wx.EVT_BUTTON, self.OnSend)
-		self.status = wx.StaticText(panel, label="READY!")
+
+		hbox = wx.BoxSizer(wx.HORIZONTAL)
+		hbox.Add(self.status, 10, wx.ALL|wx.EXPAND, 5)
+		hbox.Add(self.sendButton, 1, wx.ALL, 5)
+		pnl.SetSizer(hbox)
 
 		vbox = wx.BoxSizer(wx.VERTICAL)
-		vbox.Add(self.response, 10, wx.EXPAND | wx.ALL, 5)
+		vbox.Add(self.response, 6, wx.EXPAND | wx.ALL, 5)
 		vbox.Add(self.prompt, 3, wx.EXPAND |wx.ALL, 5)
-		vbox.Add(self.sendButton, 1, wx.ALIGN_RIGHT|wx.ALL, 5)
-		vbox.Add(self.status, 1, wx.ALIGN_LEFT|wx.ALL|wx.EXPAND, 5)
+		vbox.Add(pnl, 1, wx.EXPAND |wx.ALL, 5)
 		panel.SetSizer(vbox)
 
 	def setStatus(self, text):
