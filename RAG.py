@@ -10,7 +10,7 @@ import os
 
 class RAG:
 	def __init__(self):
-		Settings.embed_model = OllamaEmbedding(base_url=settings.host, model_name="nomic-embed-text") # snowflake-arctic-embed
+		Settings.embed_model = OllamaEmbedding(base_url=settings.host, model_name="nomic-embed-text") # nomic-embed-text, mxbai-embed-large, snowflake-arctic-embed
 		self.index = None
 
 	def load_index(self, folder):
@@ -23,6 +23,17 @@ class RAG:
 		try:
 			self.index.storage_context.persist(persist_dir=folder)
 		except Exception as e: displayError(e)
+
+	def build_index(self, documents, setStatus):
+		nodes = Settings.node_parser(documents)
+		node_texts = [n.get_content(metadata_mode="embed") for n in nodes]
+		embeddings = []
+		for i, text in enumerate(node_texts):
+			setStatus(f"Creating embeddings for {i}/{len(node_texts)}")
+			embeddings.append(Settings.embed_model.get_text_embedding(text))
+		for node, embedding in zip(nodes, embeddings):
+			node.embedding = embedding
+		return VectorStoreIndex(nodes=nodes)
 
 	def loadUrl(self, url, setStatus):
 		try:
@@ -50,13 +61,15 @@ class RAG:
 
 	def loadFolder(self, path, setStatus):
 		try:
+			setStatus("Loading files.")
 			start = time()
 			if isinstance(path, str):
 				documents = SimpleDirectoryReader(path, recursive=True).load_data()
 			else:
 				documents = SimpleDirectoryReader(input_files=path).load_data()
 
-			self.index = VectorStoreIndex.from_documents(documents) # , show_progress=True
+			#self.index = VectorStoreIndex.from_documents(documents) # , show_progress=True
+			self.index = self.build_index(documents, setStatus)
 			message = f"Indexed folder into {len(documents)} chunks in {time()-start:0.2f} seconds."
 			displayInfo("Index", message)
 			setStatus(message)
