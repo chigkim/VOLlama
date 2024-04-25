@@ -191,7 +191,7 @@ class Model:
 				prompt_duration = data['prompt_eval_duration']/div
 				gen_count = data['eval_count']
 				gen_duration = data['eval_duration']/div
-				stat = f"Total: {total:.2f} secs, Load: {load:.2f} secs, Prompt: {prompt_count} tokens ({prompt_count/prompt_duration:.2f} t/s), Output: {gen_count} tokens ({gen_count/gen_duration:.2f} t/s)"
+				stat = f"Total: {total:.2f} seconds, Load: {load:.2f} seconds, Prompt Processing: {prompt_count} tokens ({prompt_count/prompt_duration:.2f} tokens/second), Text Generation: {gen_count} tokens ({gen_count/gen_duration:.2f} tokens/second)"
 				wx.CallAfter(window.setStatus, stat)
 			elif self.token_counter.total_llm_token_count:
 				status_message = f"Embedding Tokens: {self.token_counter.total_embedding_token_count}, LLM Prompt Tokens: {self.token_counter.prompt_llm_token_count}, LLM Completion Tokens: {self.token_counter.completion_llm_token_count}, Total LLM Token Count {self.token_counter.total_llm_token_count}"
