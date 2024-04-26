@@ -1,5 +1,7 @@
 # Change log
 
+* Increased default context length to 8192 to match Llama3.
+* Clearer status message
 * Created  an accessible status label for Mac.
 * Reports progress during embedding.
 * Deploy 3 different web readers to retrieve webpages better.

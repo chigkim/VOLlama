@@ -2,8 +2,8 @@ Accessible Chat Client for Ollama
 
 ## Download
 
-* [Mac](https://github.com/chigkim/VOLlama/releases/download/v0.1.0.25/VOLlama-Mac.zip)
-* [Windows](https://github.com/chigkim/VOLlama/releases/download/v0.1.0.25/VOLlama-Win.zip)
+* [Mac](https://github.com/chigkim/VOLlama/releases/download/v0.1.1.26/VOLlama-Mac.zip)
+* [Windows](https://github.com/chigkim/VOLlama/releases/download/v0.1.1.26/VOLlama-Win.zip)
 
 ## Instructions
 
@@ -23,7 +23,7 @@ ollama pull nomic-embed-text
 
 Finally, run VOLlama.
 
-For Mac, VOLlama is not code signed, so you need to allow to run in system settings > privacy and security.
+For Mac, VOLlama is not notarized by Apple, so you need to allow to run in system settings > privacy and security.
 
 VOLlama may take a while to load especially on Mac, so be patient. You'll eventually hear "VOLlama is starting."
 
