@@ -16,7 +16,7 @@
 	"show_context": false,
 	"parameters": {
 		"num_ctx": {
-			"value": 4096,
+			"value": 8192,
 			"description": "Sets the size of the context window used to generate the next token.",
 			"range": "The max context length depends on the model."
 		},
