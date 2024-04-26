@@ -3,7 +3,7 @@ from Parameters import get_parameters
 from ollama import Client as Ollama_Client
 from openai import OpenAI as OpenAI_client
 import google.generativeai as gemini_client
-from llama_index.core import Settings, SimpleDirectoryReader
+from llama_index.core import Settings
 from llama_index.core.base.llms.types import ChatResponse
 from llama_index.core.schema import ImageDocument
 from llama_index.llms.ollama import Ollama
@@ -11,7 +11,6 @@ from llama_index.llms.openai import OpenAI
 from llama_index.llms.gemini import Gemini
 from llama_index.core.llms import ChatMessage
 from llama_index.multi_modal_llms.openai.utils import generate_openai_multi_modal_chat_message
-from llama_index.core.multi_modal_llms.generic_utils import image_documents_to_base64
 import wx
 from Utils import displayError
 from pathlib import Path
@@ -23,6 +22,11 @@ import tiktoken
 import tiktoken_ext
 from tiktoken_ext import openai_public
 from llama_index.core.callbacks import CallbackManager, TokenCountingHandler
+import base64
+
+def encode_image(image_path):
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode('utf-8')
 
 class Model:	
 	def __init__(self):
@@ -128,14 +132,14 @@ class Model:
 			Settings.callback_manager = CallbackManager([self.token_counter])
 		message = ChatMessage(role='user', content=content)
 		if self.image:
-			documents = SimpleDirectoryReader(input_files=[self.image]).load_data()
+			image = encode_image(self.image)
+			document = ImageDocument(image=image, image_path=self.image)
 			if settings.llm_name == "Ollama":
-				images = image_documents_to_base64(documents)
-				message = ChatMessage(role='user', content=content, additional_kwargs={'images':images})
+				message = ChatMessage(role='user', content=content, additional_kwargs={'images':[image]})
 			elif settings.llm_name == "Gemini":
-				message = ChatMessage(role='user', content=content, additional_kwargs={'images':documents})
+				message = ChatMessage(role='user', content=content, additional_kwargs={'images':[document]})
 			elif settings.llm_name == "OpenAI":
-				message = generate_openai_multi_modal_chat_message(prompt=content, role="user", image_documents=documents, image_detail="auto")
+				message = generate_openai_multi_modal_chat_message(prompt=content, role="user", image_documents=[document], image_detail="auto")
 			else:
 				print("Unknown")
 		try:
