@@ -1,12 +1,17 @@
 Accessible Chat Client for Ollama
 
+## Download
+
+* [Mac](https://github.com/chigkim/VOLlama/releases/download/v0.1.0.25/VOLlama-Mac.zip)
+* [Windows](https://github.com/chigkim/VOLlama/releases/download/v0.1.0.25/VOLlama-Win.zip)
+
 ## Instructions
 
 To use VOLlama, you must first set up Ollama and download a model from Ollama's library. Follow these steps:
 
 Download and install [Ollama](https://ollama.ai/).
 
-You will need a model to generate text. Execute the command below to download a model. If you prefer to use a [different model](https://ollama.ai/library), replace `llama3` with your chosen model.
+You will need a model to generate text. Execute the command below in terminal (or command-line on Windows) to download a model. If you prefer to use a [different model](https://ollama.ai/library), replace `llama3` with your chosen model.
 ```
 ollama pull llama3
 ```
@@ -16,7 +21,7 @@ If you want to utilize the retrieval-augmented generation feature, you need to d
 ollama pull nomic-embed-text
 ```
 
-Download the [latest release](https://github.com/chigkim/VOLlama/releases/) and run.
+Finally, run VOLlama.
 
 For Mac, VOLlama is not code signed, so you need to allow to run in system settings > privacy and security.
 
@@ -40,9 +45,9 @@ To retrieve a document and ask questions about it, follow these steps:
 Note: It retrieves only snippets of text relevant to your question, so full summaries are not available.
 
 1. Go to Rag menu > index a URL.
-2. Enter `https://www.apple.com/apple-vision-pro/`.
+2. Enter `https://bbc.com/`.
 3. Wait until the document is indexed.
-4. In the message field, type `/q What can you do with Vision Pro?` without the quotes. Prefacing your message with `/q` triggers processing your prompt with RAG using LlamaIndex.
+4. In the message field, type `/q What are some positive news for today?` without the quotes. Prefacing your message with `/q` triggers processing your prompt with RAG using LlamaIndex.
 5. You can also index a folder with documents in it, including all subfolders. It will index all accessible documents, such as PDFs, TXT files, and DOCs.
 
 ## Copy Model in Advanced Menu
