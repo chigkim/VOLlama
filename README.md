@@ -1,9 +1,6 @@
+# VOLlama
+
 Accessible Chat Client for Ollama
-
-## Download
-
-* [Mac](https://github.com/chigkim/VOLlama/releases/download/v0.1.1.26/VOLlama-Mac.zip)
-* [Windows](https://github.com/chigkim/VOLlama/releases/download/v0.1.1.26/VOLlama-Win.zip)
 
 ## Instructions
 
@@ -16,7 +13,14 @@ You will need a model to generate text. Execute the command below in terminal (o
 ollama pull llama3
 ```
 
-If you want to utilize the retrieval-augmented generation feature, you need to download `nomic-embed-text` for embedding.
+Optionally, If you want to utilize the image description feature, you need to download a multimodal (vision+language) model.
+```
+ollama pull llava
+```
+
+There are also llava:13b and llava:34b which have higher accuracy but require more storage, memory, and computing power.
+
+Optionally, If you want to utilize the retrieval-augmented generation feature, you need to download `nomic-embed-text` for embedding.
 ```
 ollama pull nomic-embed-text
 ```
@@ -27,43 +31,34 @@ For Mac, VOLlama is not notarized by Apple, so you need to allow to run in syste
 
 VOLlama may take a while to load especially on Mac, so be patient. You'll eventually hear "VOLlama is starting."
 
-## Shortcuts
-
-On a Mac, use the Command key instead of the Control key and Option instead of Alt.
-
-- **Control+L**: Focus on the model list.
-- **Control+Enter**: Insert a new line.
-- **Esc**: Shift focus to the prompt.
-- **Edit history**: Alt+up/down
+If you want responses to be read aloud automatically, you can enable the "Speak Response with System Voice" option from the chat menu.
 
 If you are operating Ollama on a different machine, configure the host address in the advanced menu.
 
-## [Retrieval-Augmented Generation](https://blogs.nvidia.com/blog/what-is-retrieval-augmented-generation/)
+## Shortcuts
 
-To retrieve a document and ask questions about it, follow these steps:
+Here are some useful shortcuts. On a Mac, use the Command key instead of the Control key and Option instead of Alt.
 
-Note: It retrieves only snippets of text relevant to your question, so full summaries are not available.
+* Control+L: Focus on the model list.
+* Control+Enter: Insert a new line.
+* Esc: Shift focus to the prompt.
+* Control+n: Start a new chat.
+* Control+Alt+s: edit system prompt.
+* Control+Alt+p: Generation parameters.
+* Control+i: Attach an image.
+* Alt+up/down: edit history. Esc when you're done editing.
 
-1. Go to Rag menu > index a URL.
-2. Enter `https://bbc.com/`.
-3. Wait until the document is indexed.
-4. In the message field, type `/q What are some positive news for today?` without the quotes. Prefacing your message with `/q` triggers processing your prompt with RAG using LlamaIndex.
-5. You can also index a folder with documents in it, including all subfolders. It will index all accessible documents, such as PDFs, TXT files, and DOCs.
+## Image Description
 
-## Copy Model in Advanced Menu
+In order to ask a multimodal model questions about an image:
 
-This feature allows you to duplicate an existing model via a model file, enabling you to use it as a preset with a different name and parameters (e.g., temperature, repeat penalty, maximum generation length, context length). It does not duplicate the model's weight files, thus conserving storage space even with multiple duplicates.
+1. choose a multimodal model from the toolbar (control+l.)
+2. Attach an image file from the chat menu (or control+i.)
+3. Type your question like "Can you describe the image?" on the prompt field and send it.
 
-For more details, see [modelfile](https://github.com/ollama/ollama/blob/main/docs/modelfile.md).
+## Generation Parameter Values
 
-For Mac users, it is crucial to disable smart quotes before opening the copy model dialog. If your model file displays a left double quotation mark instead of a straight quotation mark, smart quotes are enabled.
-
-- **MacOS 13 Ventura or later**: Go to System Settings > Keyboard > Edit Input Source > turn off smart quotes.
-- **Before Ventura**: Navigate to System Preferences > Keyboard > Text > uncheck smart quotes.
-
-## Parameter Values
-
-This table lists the parameters available in VOLlama, along with their descriptions, types, and default values:
+This table lists the generation parameters available in VOLlama, along with their descriptions, types, and default values:
 
 | Parameter | Description | Value Type | Default Value |
 |---------------------|-----------------------------------------------------------------------------------------------------|------------|---------------|
@@ -85,6 +80,18 @@ This table lists the parameters available in VOLlama, along with their descripti
 | penalize_newline | Whether to penalize the generation of new lines. | bool | True |
 | stop | Triggers the model to stop generating text when this pattern is encountered. List strings separated by ", ". | string Array | empty |
 | seed | Sets the random number seed for generation. Specific numbers ensure reproducibility. -1 = random. | int | -1 |
+
+## [Retrieval-Augmented Generation](https://blogs.nvidia.com/blog/what-is-retrieval-augmented-generation/)
+
+To retrieve a document and ask questions about it, follow these steps:
+
+Note: It retrieves only snippets of text relevant to your question, so full summaries are not available.
+
+1. Go to Rag menu > index a URL.
+2. Enter `https://bbc.com/`.
+3. Wait until the document is indexed.
+4. In the message field, type `/q What are some positive news for today?` without the quotes. Prefacing your message with `/q` triggers processing your prompt with RAG using LlamaIndex.
+5. You can also index a folder with documents in it, including all subfolders. It will index all accessible documents, such as PDFs, TXT files, and DOCs.
 
 ## Rag Settings
 
@@ -108,6 +115,17 @@ This section describes the parameters related to the Retrieval-Augmented Generat
 * accumulate: Given a set of text chunks and the query, apply the query to each text chunk while accumulating the responses into an array. Returns a concatenated string of all responses. Good for when you need to run the same query separately against each text chunk.
 * compact_accumulate: The same as accumulate, but will ?compact? each LLM prompt similar to compact, and run the same query against each text chunk.
 
+## Copy Model in Advanced Menu
+
+This feature allows you to duplicate an existing model via a model file, enabling you to use it as a preset with a different name and parameters (e.g., temperature, repeat penalty, maximum generation length, context length). It does not duplicate the model's weight files, thus conserving storage space even with multiple duplicates.
+
+For more details, see [modelfile](https://github.com/ollama/ollama/blob/main/docs/modelfile.md).
+
+For Mac users, it is crucial to disable smart quotes before opening the copy model dialog. If your model file displays a left double quotation mark instead of a straight quotation mark, smart quotes are enabled.
+
+- **MacOS 13 Ventura or later**: Go to System Settings > Keyboard > Edit Input Source > turn off smart quotes.
+- **Before Ventura**: Navigate to System Preferences > Keyboard > Text > uncheck smart quotes.
+
 ## Docker (Optional)
 
 If you prefer to run Ollama using Docker, follow the instructions below:
@@ -122,7 +140,7 @@ Download a model to generate text. Replace `llama3` with your desired model if y
 docker exec ollama ollama pull llama3
 ```
 
-If you wish to use the retrieval-augmented generation feature, download `nomic-embed-text` for embedding:
+Optionally, If you wish to use the retrieval-augmented generation feature, download `nomic-embed-text` for embedding:
 ```
 docker exec ollama ollama pull nomic-embed-text
 ```
