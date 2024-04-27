@@ -1,5 +1,6 @@
 # Change log
 
+* Remove single file package to speed up load time.
 * Increased default context length to 8192 to match Llama3.
 * Clearer status message
 * Created  an accessible status label for Mac.

@@ -1,2 +1,2 @@
 #!/bin/sh
-pyinstaller -F --onefile --noconsole --add-data="send.wav:." --add-data="receive.wav:." --add-data="default-parameters.json:." --add-data ".venv/Lib/python3.11/site-packages/llama_index/core/_static/nltk_cache:llama_index/core/_static/nltk_cache" VOLlama.py
+pyinstaller --noconsole --add-data="send.wav:." --add-data="receive.wav:." --add-data="default-parameters.json:." --add-data ".venv/Lib/python3.11/site-packages/llama_index/core/_static/nltk_cache:llama_index/core/_static/nltk_cache" VOLlama.py
