@@ -1,5 +1,6 @@
 # Change log
 
+* Creates indexes for only supported file types.
 * Remove single file package to speed up load time.
 * Clearer status message
 * Created  an accessible status label for Mac.
