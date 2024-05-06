@@ -1,4 +1,4 @@
-version = 28
+version = 29
 import wx
 import threading
 import sounddevice as sd
@@ -65,7 +65,7 @@ class ChatWindow(wx.Frame):
 		self.configSpeech = chatMenu.Append(wx.ID_ANY, "Configure Voice...")
 		self.Bind(wx.EVT_MENU, self.speech.present_voice_rate_dialog, self.configSpeech)
 
-		self.apiSettingsMenu = chatMenu.Append(wx.ID_ANY, "API Settings...")
+		self.apiSettingsMenu = chatMenu.Append(wx.ID_ANY, "&API Settings...\tCTRL+SHIFT+A")
 		self.Bind(wx.EVT_MENU, self.displayAPISettingsDialog, self.apiSettingsMenu)
 
 		exitMenu = chatMenu.Append(wx.ID_EXIT)

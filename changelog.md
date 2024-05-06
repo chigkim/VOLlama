@@ -1,5 +1,5 @@
 # Change log
-
+* Shortcut for API Settings: Control+(or Command)+Shift+A
 * Creates indexes for only supported file types.
 * Remove single file package to speed up load time.
 * Clearer status message
