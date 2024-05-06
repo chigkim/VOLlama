@@ -62,11 +62,12 @@ class RAG:
 			setStatus("Failed to index.")
 
 	def loadFolder(self, path, setStatus):
+		required_exts = [".hwp", ".pdf", ".docx", ".pptx", ".ppt", ".pptm", ".csv", ".epub", ".md", ".mbox"]
 		try:
 			setStatus("Loading files.")
 			start = time()
 			if isinstance(path, str):
-				documents = SimpleDirectoryReader(path, recursive=True).load_data()
+				documents = SimpleDirectoryReader(path, recursive=True, required_exts=required_exts).load_data()
 			else:
 				documents = SimpleDirectoryReader(input_files=path).load_data()
 
