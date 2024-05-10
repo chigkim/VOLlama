@@ -25,7 +25,7 @@ Optionally, If you want to utilize the retrieval-augmented generation feature, y
 ollama pull nomic-embed-text
 ```
 
-Finally, run VOLlama.
+Finally, [download the latest](https://github.com/chigkim/VOLlama/releases/) and run VOLlama.
 
 For Mac, VOLlama is not notarized by Apple, so you need to allow to run in system settings > privacy and security.
 
