@@ -2,8 +2,8 @@ Accessible Chat Client for Ollama
 
 ## Download v0.1.2
 
-* [Mac](https://github.com/chigkim/VOLlama/releases/download/v0.1.2.27/VOLlama-Mac.zip)
-* [Windows](https://github.com/chigkim/VOLlama/releases/download/v0.1.2.27/VOLlama-Win.zip)
+* [Mac](https://github.com/chigkim/VOLlama/releases/download/v0.1.3.29/VOLlama-Mac.zip)
+* [Windows](https://github.com/chigkim/VOLlama/releases/download/v0.1.3.29/VOLlama-Win.zip)
 
 ## Instructions
 
