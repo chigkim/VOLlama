@@ -1,4 +1,4 @@
-version = 29
+version = 30
 import wx
 import threading
 import sounddevice as sd
@@ -74,7 +74,7 @@ class ChatWindow(wx.Frame):
 		self.Bind(wx.EVT_MENU, self.OnExit, exitMenu)
 
 		advanceMenu= wx.Menu()
-		setSystemMenu = advanceMenu.Append(wx.ID_ANY, "Set System Message...\tCTRL+ALT+S")
+		setSystemMenu = advanceMenu.Append(wx.ID_ANY, "System Prompt Manager...\tCTRL+ALT+S")
 		self.Bind(wx.EVT_MENU, self.setSystem, setSystemMenu)
 		parametersMenu = advanceMenu.Append(wx.ID_ANY, "Generation Parameters...\tCTRL+ALT+P")
 		self.Bind(wx.EVT_MENU, self.setParameters, parametersMenu)

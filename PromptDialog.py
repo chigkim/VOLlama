@@ -7,7 +7,7 @@ import os
 
 class PromptDialog(wx.Dialog):
 	def __init__(self, parent, prompt=""):
-		super().__init__(parent, title="Edit Prompts", size=(400, 300))
+		super().__init__(parent, title="System Prompt Manager", size=(400, 300))
 
 		self.panel = wx.Panel(self)
 		self.prompt_file = os.path.join(SettingsManager().config_dir, "prompts.csv")
@@ -22,7 +22,7 @@ class PromptDialog(wx.Dialog):
 		self.new_button = wx.Button(self.panel, label="New")
 		self.save_button = wx.Button(self.panel, label="Save")
 		self.delete_button = wx.Button(self.panel, label="Delete")
-		self.update_button = wx.Button(self.panel, label="Download&Update")
+		self.update_button = wx.Button(self.panel, label="Download&Update Awesome ChatGPT Prompts")
 		self.set_button = wx.Button(self.panel, label='Set Prompt', id=wx.ID_OK)
 		self.cancel_button = wx.Button(self.panel, label='Cancel', id=wx.ID_CANCEL)
 
@@ -77,12 +77,15 @@ class PromptDialog(wx.Dialog):
 
 	def on_delete(self, event):
 		selection = self.act_list.GetSelection()
-		if selection != wx.NOT_FOUND:
-			self.prompt_data = self.prompt_data.drop(selection).reset_index(drop=True)
-			self.prompt_data = self.prompt_data.sort_values(by='act').reset_index(drop=True)
-			self.prompt_data.to_csv(self.prompt_file, index=False)
-			self.act_list.Set(self.prompt_data['act'].tolist())
-			self.prompt_text.SetValue("")
+		if selection == wx.NOT_FOUND: return
+		with wx.MessageDialog(self, f"Are you sure you want to delete {self.act_list.GetStringSelection()}?", 'Delete', wx.YES_NO|wx.ICON_QUESTION) as dlg:
+			dlg.SetYesNoLabels("Yes", "No")
+			if dlg.ShowModal() == wx.ID_NO: return
+		self.prompt_data = self.prompt_data.drop(selection).reset_index(drop=True)
+		self.prompt_data = self.prompt_data.sort_values(by='act').reset_index(drop=True)
+		self.prompt_data.to_csv(self.prompt_file, index=False)
+		self.act_list.Set(self.prompt_data['act'].tolist())
+		self.prompt_text.SetValue("")
 
 	def on_update(self, event):
 		try:
