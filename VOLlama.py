@@ -16,7 +16,7 @@ from RAGParameterDialog import RAGParameterDialog
 from APISettingsDialog import APISettingsDialog
 from Utils import displayError
 from llama_index.core.llms import ChatMessage
-
+from PromptDialog import PromptDialog
 def playSD(file):
 	p = os.path.join(os.path.dirname(__file__), file)
 	data, fs = sf.read(p, dtype='float32')  
@@ -203,9 +203,9 @@ class ChatWindow(wx.Frame):
 		settings.speakResponse = self.speakResponse.IsChecked()
 
 	def setSystem(self, event):
-		dlg = wx.TextEntryDialog(self, "Enter the system message:", "System", value=settings.system)
+		dlg = PromptDialog(self, prompt=settings.system)
 		if dlg.ShowModal() == wx.ID_OK:
-			system = dlg.GetValue()
+			system = dlg.prompt_text.GetValue()
 			self.model.setSystem(system)
 			if len(self.model.messages) == 1:
 				self.historyIndex = 1
