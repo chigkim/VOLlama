@@ -34,6 +34,7 @@ class Model:
 		self.messages = []
 		self.generate = False
 		self.image = None
+		self.document = None
 		self.rag = None
 		self.models = []
 		self.token_counter = TokenCountingHandler(tokenizer=tiktoken.encoding_for_model("gpt-3.5-turbo").encode)

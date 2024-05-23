@@ -19,8 +19,9 @@ class PromptDialog(wx.Dialog):
 		# UI Elements
 		self.act_list = wx.ListBox(self.panel, choices=self.prompt_data['act'].tolist())
 		self.prompt_text = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE)
-		self.new_button = wx.Button(self.panel, label="New")
-		self.save_button = wx.Button(self.panel, label="Save")
+		self.prompt_text.SetValue(prompt)
+		self.new_button = wx.Button(self.panel, label="Duplicate")
+		self.save_button = wx.Button(self.panel, label="Replace")
 		self.delete_button = wx.Button(self.panel, label="Delete")
 		self.update_button = wx.Button(self.panel, label="Download&Update Awesome ChatGPT Prompts")
 		self.set_button = wx.Button(self.panel, label='Set Prompt', id=wx.ID_OK)
@@ -52,7 +53,6 @@ class PromptDialog(wx.Dialog):
 		if not result.empty:
 			selection_index = result.index[0]
 			self.act_list.SetSelection(selection_index)
-			self.prompt_text.SetValue(self.prompt_data.at[selection_index, 'prompt'])
 
 	def on_act_selected(self, event):
 		selection = self.act_list.GetSelection()
@@ -63,11 +63,12 @@ class PromptDialog(wx.Dialog):
 	def on_new(self, event):
 		act = wx.GetTextFromUser("Enter new act:", "New Act")
 		if act:
-			self.prompt_data = self.prompt_data._append({'act': act, 'prompt': ''}, ignore_index=True)
+			prompt = self.prompt_text.GetValue()
+			self.prompt_data = self.prompt_data._append({'act': act, 'prompt': prompt}, ignore_index=True)
 			self.prompt_data = self.prompt_data.sort_values(by='act').reset_index(drop=True)
 			self.act_list.Set(self.prompt_data['act'].tolist())
 			self.act_list.SetSelection(self.prompt_data.index[self.prompt_data['act'] == act].tolist()[0])
-			self.prompt_text.SetValue("")
+			self.prompt_text.SetValue(prompt)
 
 	def on_save(self, event):
 		selection = self.act_list.GetSelection()
