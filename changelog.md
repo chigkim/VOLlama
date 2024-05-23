@@ -1,4 +1,8 @@
 # Change log
+* Prompt manager
+* Import [Awesome ChatGPT Prompts](https://github.com/f/awesome-chatgpt-prompts)
+* Partial support for GPT-4O: Throws an error in some cases but ignore the error.
+* Able to attach entire document for long context model.
 * Shortcut for API Settings: Control+(or Command)+Shift+A
 * Creates indexes for only supported file types.
 * Remove single file package to speed up load time.
