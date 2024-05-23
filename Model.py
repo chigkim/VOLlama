@@ -23,6 +23,7 @@ import tiktoken_ext
 from tiktoken_ext import openai_public
 from llama_index.core.callbacks import CallbackManager, TokenCountingHandler
 import base64
+from llama_index.core import SimpleDirectoryReader
 
 def encode_image(image_path):
     with open(image_path, "rb") as image_file:
@@ -109,7 +110,13 @@ class Model:
 		if isinstance(path, list): self.rag.loadFolder(path, setStatus)
 		elif path.startswith("http"): self.rag.loadUrl(path, setStatus)
 		else: self.rag.loadFolder(path, setStatus)
-		
+
+	def loadDocument(self, paths):
+		required_exts = [".hwp", ".pdf", ".docx", ".pptx", ".ppt", ".pptm", ".csv", ".epub", ".md", ".mbox"]
+		documents = SimpleDirectoryReader(input_files=paths, required_exts=required_exts).load_data()
+		texts = [f"```{d.metadata['file_name']}\n{d.text}\n```" for d in documents]
+		self.document = "\n---\n".join(texts)
+
 	def setHost(self, host):
 		settings.host = host
 
@@ -130,6 +137,9 @@ class Model:
 		self.token_counter.reset_counts()
 		if not self.image:
 			Settings.callback_manager = CallbackManager([self.token_counter])
+		if self.document:
+			content += "\n---\n"+self.document
+			selfdocument = None
 		message = ChatMessage(role='user', content=content)
 		if self.image:
 			image = encode_image(self.image)

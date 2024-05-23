@@ -57,6 +57,8 @@ class ChatWindow(wx.Frame):
 
 		imageMenu = chatMenu.Append(wx.ID_ANY, "Attach an &Image...\tCTRL+I")
 		self.Bind(wx.EVT_MENU, self.onUploadImage, imageMenu)
+		documentMenu = chatMenu.Append(wx.ID_ANY, "Attach a &Document...\tCTRL+D")
+		self.Bind(wx.EVT_MENU, self.onUploadDocument, documentMenu)
 
 		self.speakResponse = chatMenu.Append(wx.ID_ANY, "Speak Response with System Voice", kind=wx.ITEM_CHECK)
 		self.speakResponse.Check(settings.speakResponse)
@@ -344,6 +346,14 @@ class ChatWindow(wx.Frame):
 			file = os.path.join(dirname, filename)
 			self.model.image = file
 			self.prompt.SetFocus()
+
+	def onUploadDocument(self, event):
+		wildcard = "Supported Files (*.txt;*.pdf;*.docx;*.pptx;*.ppt;*.pptm;*.hwp;*.csv;*.epub;*.md;*.mbox)|*.txt;*.pdf;*.docx;*.pptx;*.ppt;*.pptm;*.hwp;*.csv;*.epub;*.md"
+		with wx.FileDialog(self, "Choose a file", wildcard=wildcard, style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST|wx.FD_MULTIPLE) as fileDialog:
+			if fileDialog.ShowModal() == wx.ID_CANCEL: return
+			paths = fileDialog.GetPaths()
+			self.model.loadDocument(paths)
+		self.prompt.SetFocus()
 
 	def onIndexFile(self, event):
 		wildcard = "Supported Files (*.txt;*.pdf;*.docx;*.pptx;*.ppt;*.pptm;*.hwp;*.csv;*.epub;*.md;*.mbox)|*.txt;*.pdf;*.docx;*.pptx;*.ppt;*.pptm;*.hwp;*.csv;*.epub;*.md"
