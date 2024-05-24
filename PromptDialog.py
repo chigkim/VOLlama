@@ -17,7 +17,7 @@ class PromptDialog(wx.Dialog):
 		else:
 			self.prompt_data = pd.DataFrame(columns=["act", "prompt"])
 		# UI Elements
-		self.act_list = wx.ListBox(self.panel, choices=self.prompt_data['act'].tolist())
+		self.act_list = wx.ListBox(self.panel, choices=self.prompt_data['act'].tolist(), style=wx.LB_SINGLE)
 		self.prompt_text = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE)
 		self.prompt_text.SetValue(prompt)
 		self.new_button = wx.Button(self.panel, label="Duplicate")
@@ -53,6 +53,11 @@ class PromptDialog(wx.Dialog):
 		if not result.empty:
 			selection_index = result.index[0]
 			self.act_list.SetSelection(selection_index)
+			event = wx.CommandEvent(wx.wxEVT_LISTBOX, self.act_list.GetId())
+			event.SetInt(selection_index)
+			event.SetString(self.act_list.GetString(selection_index))
+			wx.PostEvent(self.act_list.GetEventHandler(), event)
+			self.act_list.Refresh()
 
 	def on_act_selected(self, event):
 		selection = self.act_list.GetSelection()
