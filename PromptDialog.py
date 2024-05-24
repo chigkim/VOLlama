@@ -21,7 +21,7 @@ class PromptDialog(wx.Dialog):
 		self.prompt_text = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE)
 		self.prompt_text.SetValue(prompt)
 		self.new_button = wx.Button(self.panel, label="Duplicate")
-		self.save_button = wx.Button(self.panel, label="Replace")
+		self.save_button = wx.Button(self.panel, label="Save")
 		self.delete_button = wx.Button(self.panel, label="Delete")
 		self.update_button = wx.Button(self.panel, label="Download&Update Awesome ChatGPT Prompts")
 		self.set_button = wx.Button(self.panel, label='Set Prompt', id=wx.ID_OK)
