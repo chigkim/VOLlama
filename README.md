@@ -45,16 +45,10 @@ If you are operating Ollama on a different machine, configure the host address i
 
 ## Shortcuts
 
-Here are some useful shortcuts. On a Mac, use the Command key instead of the Control key and Option instead of Alt.
+Shortcuts for all the features can be found in the menu bar. Here are exceptions:
 
-* Control+L: Focus on the model list.
-* Control+Enter: Insert a new line.
+* Control(or Command)+Enter: Insert a new line.
 * Esc: Shift focus to the prompt.
-* Control+n: Start a new chat.
-* Control+Alt+s: edit system prompt.
-* Control+Alt+p: Generation parameters.
-* Control+i: Attach an image.
-* Alt+up/down: edit history. Esc when you're done editing.
 
 ## Image Description
 
