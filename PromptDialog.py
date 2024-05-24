@@ -20,7 +20,7 @@ class PromptDialog(wx.Dialog):
 		self.act_list = wx.ListBox(self.panel, choices=self.prompt_data['act'].tolist(), style=wx.LB_SINGLE)
 		self.prompt_text = wx.TextCtrl(self.panel, style=wx.TE_MULTILINE)
 		self.prompt_text.SetValue(prompt)
-		self.new_button = wx.Button(self.panel, label="Duplicate")
+		self.new_button = wx.Button(self.panel, label="New")
 		self.save_button = wx.Button(self.panel, label="Save")
 		self.delete_button = wx.Button(self.panel, label="Delete")
 		self.update_button = wx.Button(self.panel, label="Download&Update Awesome ChatGPT Prompts")
@@ -66,7 +66,7 @@ class PromptDialog(wx.Dialog):
 			self.prompt_text.SetValue(prompt)
 
 	def on_new(self, event):
-		act = wx.GetTextFromUser("Enter new act:", "New Act")
+		act = wx.GetTextFromUser("Enter new name:", "New")
 		if act:
 			prompt = self.prompt_text.GetValue()
 			self.prompt_data = self.prompt_data._append({'act': act, 'prompt': prompt}, ignore_index=True)

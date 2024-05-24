@@ -67,6 +67,9 @@ class ChatWindow(wx.Frame):
 		self.configSpeech = chatMenu.Append(wx.ID_ANY, "Configure Voice...")
 		self.Bind(wx.EVT_MENU, self.speech.present_voice_rate_dialog, self.configSpeech)
 
+		self.modelsMenu = chatMenu.Append(wx.ID_ANY, "&Models\tCTRL+l")
+		self.Bind(wx.EVT_MENU, self.FocusOnModelList, self.modelsMenu)
+
 		self.apiSettingsMenu = chatMenu.Append(wx.ID_ANY, "&API Settings...\tCTRL+SHIFT+A")
 		self.Bind(wx.EVT_MENU, self.displayAPISettingsDialog, self.apiSettingsMenu)
 
@@ -253,7 +256,6 @@ class ChatWindow(wx.Frame):
 
 	def SetupAccelerators(self):
 		shortcuts = {
-			"model":(wx.ACCEL_CTRL, ord('l'), wx.NewIdRef()),
 			"prompt":(wx.ACCEL_NORMAL, wx.WXK_ESCAPE, wx.NewIdRef()),
 			"history_up": (wx.ACCEL_ALT, wx.WXK_UP, wx.NewIdRef()),
 			"history_down": (wx.ACCEL_ALT, wx.WXK_DOWN, wx.NewIdRef()),
@@ -261,7 +263,6 @@ class ChatWindow(wx.Frame):
 		accelEntries = [v for k,v in shortcuts.items()]
 		accelTable = wx.AcceleratorTable(accelEntries)
 		self.SetAcceleratorTable(accelTable)
-		self.Bind(wx.EVT_MENU, self.FocusOnModelList, id=shortcuts['model'][2])
 		self.Bind(wx.EVT_MENU, self.FocusOnPrompt, id=shortcuts['prompt'][2])
 		self.Bind(wx.EVT_MENU, self.OnHistoryUp, id=shortcuts['history_up'][2])
 		self.Bind(wx.EVT_MENU, self.OnHistoryDown, id=shortcuts['history_down'][2])
