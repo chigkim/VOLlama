@@ -50,31 +50,31 @@ class ChatWindow(wx.Frame):
 		self.Bind(wx.EVT_MENU, self.onOpen, openMenu)
 		saveMenu = chatMenu.Append(wx.ID_SAVE)
 		self.Bind(wx.EVT_MENU, self.onSave, saveMenu)
-		copyMenu = chatMenu.Append(wx.ID_ANY, "&Copy\tCTRL+SHIFT+C")
-		self.Bind(wx.EVT_MENU, self.OnCopyMessage, copyMenu)
-		clearMenu = chatMenu.Append(wx.ID_ANY, "Clear\tCTRL+K")
-		self.Bind(wx.EVT_MENU, self.clearLast, clearMenu)
-
 		imageMenu = chatMenu.Append(wx.ID_ANY, "Attach an &Image...\tCTRL+I")
 		self.Bind(wx.EVT_MENU, self.onUploadImage, imageMenu)
 		documentMenu = chatMenu.Append(wx.ID_ANY, "Attach a &Document...\tCTRL+D")
 		self.Bind(wx.EVT_MENU, self.onUploadDocument, documentMenu)
-
 		self.speakResponse = chatMenu.Append(wx.ID_ANY, "Speak Response with System Voice", kind=wx.ITEM_CHECK)
 		self.speakResponse.Check(settings.speakResponse)
 		self.Bind(wx.EVT_MENU, self.onToggleSpeakResponse, self.speakResponse)
-
 		self.configSpeech = chatMenu.Append(wx.ID_ANY, "Configure Voice...")
 		self.Bind(wx.EVT_MENU, self.speech.present_voice_rate_dialog, self.configSpeech)
-
 		self.modelsMenu = chatMenu.Append(wx.ID_ANY, "&Models\tCTRL+l")
 		self.Bind(wx.EVT_MENU, self.FocusOnModelList, self.modelsMenu)
-
 		self.apiSettingsMenu = chatMenu.Append(wx.ID_ANY, "&API Settings...\tCTRL+SHIFT+A")
 		self.Bind(wx.EVT_MENU, self.displayAPISettingsDialog, self.apiSettingsMenu)
-
 		exitMenu = chatMenu.Append(wx.ID_EXIT)
 		self.Bind(wx.EVT_MENU, self.OnExit, exitMenu)
+
+		editMenu= wx.Menu()
+		copyMenu = editMenu.Append(wx.ID_ANY, "&Copy Last Message\tCTRL+SHIFT+C")
+		self.Bind(wx.EVT_MENU, self.OnCopyMessage, copyMenu)
+		clearMenu = editMenu.Append(wx.ID_ANY, "Clear Last Message\tCTRL+K")
+		self.Bind(wx.EVT_MENU, self.clearLast, clearMenu)
+		editPreviousMenu = editMenu.Append(wx.ID_ANY, "Edit Previous Message\tAlt+Up")
+		self.Bind(wx.EVT_MENU, self.OnHistoryUp, editPreviousMenu)
+		editNextMenu = editMenu.Append(wx.ID_ANY, "Edit Next Message\tALT+Down")
+		self.Bind(wx.EVT_MENU, self.OnHistoryDown, editNextMenu)
 
 		advanceMenu= wx.Menu()
 		setSystemMenu = advanceMenu.Append(wx.ID_ANY, "System Prompt Manager...\tCTRL+ALT+S")
@@ -108,6 +108,7 @@ class ChatWindow(wx.Frame):
 		
 		menuBar = wx.MenuBar()
 		menuBar.Append(chatMenu,"&Chat")
+		menuBar.Append(editMenu,"&Edit")
 		menuBar.Append(advanceMenu,"&Advance")
 		menuBar.Append(ragMenu,"&Rag")
 		self.SetMenuBar(menuBar)
@@ -257,15 +258,11 @@ class ChatWindow(wx.Frame):
 	def SetupAccelerators(self):
 		shortcuts = {
 			"prompt":(wx.ACCEL_NORMAL, wx.WXK_ESCAPE, wx.NewIdRef()),
-			"history_up": (wx.ACCEL_ALT, wx.WXK_UP, wx.NewIdRef()),
-			"history_down": (wx.ACCEL_ALT, wx.WXK_DOWN, wx.NewIdRef()),
 		}
 		accelEntries = [v for k,v in shortcuts.items()]
 		accelTable = wx.AcceleratorTable(accelEntries)
 		self.SetAcceleratorTable(accelTable)
 		self.Bind(wx.EVT_MENU, self.FocusOnPrompt, id=shortcuts['prompt'][2])
-		self.Bind(wx.EVT_MENU, self.OnHistoryUp, id=shortcuts['history_up'][2])
-		self.Bind(wx.EVT_MENU, self.OnHistoryDown, id=shortcuts['history_down'][2])
 
 	def OnHistoryUp(self, event):
 		self.historyIndex -= 1

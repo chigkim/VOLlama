@@ -1,4 +1,7 @@
 # Change log
+
+* Models in chat menu
+* Edit menu
 * Prompt manager
 * Import [Awesome ChatGPT Prompts](https://github.com/f/awesome-chatgpt-prompts)
 * Partial support for GPT-4O: Throws an error in some cases but ignore the error.
