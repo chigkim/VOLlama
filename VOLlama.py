@@ -1,4 +1,4 @@
-version = 30
+version = 31
 import wx
 import threading
 import sounddevice as sd
@@ -87,8 +87,6 @@ class ChatWindow(wx.Frame):
 		self.Bind(wx.EVT_MENU, self.OnDeleteModel, self.deleteModelMenu)
 		self.copyModelMenu.Enable(settings.llm_name == "Ollama")
 		self.deleteModelMenu.Enable(settings.llm_name == "Ollama")
-		hostMenu = advanceMenu.Append(wx.ID_ANY, "Set Host...")
-		self.Bind(wx.EVT_MENU, self.setHost, hostMenu)
 		#logMenu = advanceMenu.Append(wx.ID_ANY, "Log\tCTRL+ALT+L")
 		#self.Bind(wx.EVT_MENU, self.log, logMenu)
 
@@ -194,16 +192,6 @@ class ChatWindow(wx.Frame):
 			self.modelList.SetSelection(0)
 		self.onSelectModel()
 		self.modelList.SetFocus()
-
-
-	def setHost(self, event):
-		dlg = wx.TextEntryDialog(self, "Enter the host address:", "Host", value=settings.host)
-		if dlg.ShowModal() == wx.ID_OK:
-			host = dlg.GetValue()
-			self.model.setHost(host)
-			settings.host = host
-			self.refreshModels()
-		dlg.Destroy()
 
 	def onToggleSpeakResponse(self, e):
 		settings.speakResponse = self.speakResponse.IsChecked()

@@ -24,6 +24,7 @@ from tiktoken_ext import openai_public
 from llama_index.core.callbacks import CallbackManager, TokenCountingHandler
 import base64
 from llama_index.core import SimpleDirectoryReader
+from llama_index.llms.openai_like import OpenAILike
 
 def encode_image(image_path):
     with open(image_path, "rb") as image_file:
@@ -42,12 +43,14 @@ class Model:
 	def get_models(self):
 		ids = []
 		if settings.llm_name == "Ollama":
-			ids = [model['name'] for model in Ollama_Client(host=settings.host).list()['models']]
+			ids = [model['name'] for model in Ollama_Client(host=settings.ollama_base_url).list()['models']]
 		if settings.llm_name == "OpenAI":
 			if not settings.openai_api_key: return ids
-			os.environ["OPENAI_API_KEY"] = settings.openai_api_key
-			client = OpenAI_client()
+			client = OpenAI_client(api_key=settings.openai_api_key)
 			ids = [i.id for i in list(client.models.list().data) if i.id.startswith("gpt")]
+		if settings.llm_name == "OpenAILike":
+			client = OpenAI_client (base_url=settings.openailike_base_url, api_key=settings.openailike_api_key)
+			ids = [i.id for i in list(client.models.list().data)]
 		if settings.llm_name == "Gemini":
 			if not settings.gemini_api_key: return ids
 			gemini_client.configure(api_key=settings.gemini_api_key)
@@ -61,10 +64,9 @@ class Model:
 			settings.model_name = self.get_models()[0]
 		options = get_parameters()
 		if settings.llm_name == "Ollama":
-			Settings.llm = Ollama(model=settings.model_name, request_timeout=600, base_url=settings.host, additional_kwargs=options)
+			Settings.llm = Ollama(model=settings.model_name, request_timeout=600, base_url=settings.ollama_base_url, additional_kwargs=options)
 		if settings.llm_name == "OpenAI":
 			if not settings.openai_api_key: return
-			os.environ["OPENAI_API_KEY"] = settings.openai_api_key
 			additional_kwargs = {
 				"seed":options['seed'],
 				"temperature":options["temperature"],
@@ -73,8 +75,8 @@ class Model:
 				"presence_penalty":options["presence_penalty"],
 				"frequency_penalty":options["frequency_penalty"],
 			}
-			Settings.llm = OpenAI(model = settings.model_name, additional_kwargs=additional_kwargs)
-		if settings.llm_name == "Gemini":
+			Settings.llm = OpenAI(model = settings.model_name, api_key=settings.openai_api_key, additional_kwargs=additional_kwargs)
+		elif settings.llm_name == "Gemini":
 			if not settings.gemini_api_key: return
 			os.environ["GOOGLE_API_KEY"] = settings.gemini_api_key
 			generate_kwargs = {
@@ -84,7 +86,19 @@ class Model:
 				"max_output_tokens":options["num_ctx"],
 			}
 			Settings.llm = Gemini(model_name=settings.model_name, generate_kwargs=generate_kwargs)
-
+		elif settings.llm_name == "OpenAILike":
+			if not settings.openailike_base_url or not settings.openailike_api_key: return
+			additional_kwargs = {
+				"seed":options['seed'],
+				"temperature":options["temperature"],
+				"top_p":options["top_p"],
+				"max_tokens":options["num_ctx"],
+				"presence_penalty":options["presence_penalty"],
+				"frequency_penalty":options["frequency_penalty"],
+			}
+			Settings.llm = OpenAILike(model = settings.model_name, api_base=settings.openailike_base_url, api_key=settings.openailike_api_key, additional_kwargs=additional_kwargs)
+			Settings.llm.is_chat_model = True
+		else: return
 		Settings.chunk_size = settings.chunk_size
 		Settings.chunk_overlap = settings.chunk_overlap
 		Settings.similarity_top_k = settings.similarity_top_k
@@ -93,13 +107,13 @@ class Model:
 		#Settings.num_output = options['num_ctx']-256
 
 	def delete(self):
-		Ollama_Client(host=settings.host).delete(settings.model_name)
+		Ollama_Client(host=settings.ollama_base_url).delete(settings.model_name)
 
 	def create(self, name, modelfile):
-		Ollama_Client(host=settings.host).create(name, modelfile=modelfile, stream=False)
+		Ollama_Client(host=settings.ollama_base_url).create(name, modelfile=modelfile, stream=False)
 
 	def modelfile(self):
-		return Ollama_Client(host=settings.host).show(settings.model_name)['modelfile']
+		return Ollama_Client(host=settings.ollama_base_url).show(settings.model_name)['modelfile']
 
 	def load_index(self, folder):
 		if not self.rag:
@@ -117,9 +131,6 @@ class Model:
 		documents = SimpleDirectoryReader(input_files=paths, required_exts=required_exts).load_data()
 		texts = [f"```{d.metadata['file_name']}\n{d.text}\n```" for d in documents]
 		self.document = "\n---\n".join(texts)
-
-	def setHost(self, host):
-		settings.host = host
 
 	def setModel(self, name):
 		if settings.model_name == name: return
@@ -149,7 +160,7 @@ class Model:
 				message = ChatMessage(role='user', content=content, additional_kwargs={'images':[image]})
 			elif settings.llm_name == "Gemini":
 				message = ChatMessage(role='user', content=content, additional_kwargs={'images':[document]})
-			elif settings.llm_name == "OpenAI":
+			elif settings.llm_name == "OpenAI" or settings.llm_name == "OpenAILike":
 				message = generate_openai_multi_modal_chat_message(prompt=content, role="user", image_documents=[document], image_detail="auto")
 			else:
 				print("Unknown")
