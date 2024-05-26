@@ -51,13 +51,15 @@ class PromptDialog(wx.Dialog):
 
 		result = self.prompt_data[self.prompt_data['prompt'] == prompt]
 		if not result.empty:
-			selection_index = result.index[0]
-			self.act_list.SetSelection(selection_index)
-			event = wx.CommandEvent(wx.wxEVT_LISTBOX, self.act_list.GetId())
-			event.SetInt(selection_index)
-			event.SetString(self.act_list.GetString(selection_index))
-			wx.PostEvent(self.act_list.GetEventHandler(), event)
-			self.act_list.Refresh()
+			self.select(result.index[0])
+
+	def select(self, index):
+		self.act_list.SetSelection(index)
+		event = wx.CommandEvent(wx.wxEVT_LISTBOX, self.act_list.GetId())
+		event.SetInt(index)
+		event.SetString(self.act_list.GetString(index))
+		wx.PostEvent(self.act_list.GetEventHandler(), event)
+		self.act_list.Refresh()
 
 	def on_act_selected(self, event):
 		selection = self.act_list.GetSelection()
@@ -72,8 +74,8 @@ class PromptDialog(wx.Dialog):
 			self.prompt_data = self.prompt_data._append({'act': act, 'prompt': prompt}, ignore_index=True)
 			self.prompt_data = self.prompt_data.sort_values(by='act').reset_index(drop=True)
 			self.act_list.Set(self.prompt_data['act'].tolist())
-			self.act_list.SetSelection(self.prompt_data.index[self.prompt_data['act'] == act].tolist()[0])
-			self.prompt_text.SetValue(prompt)
+			self.select(self.prompt_data.index[self.prompt_data['act'] == act].tolist()[0])
+			self.prompt_data.to_csv(self.prompt_file, index=False)
 
 	def on_save(self, event):
 		selection = self.act_list.GetSelection()

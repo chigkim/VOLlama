@@ -1,7 +1,10 @@
 # Change log
 
-* Models in chat menu
-* Edit menu
+* Added edit menu and moved clear and copy from chat menu to edit menu.
+* Added models on chat menu.
+*     When create a new prompt, it saves automatically.
+* On prompt manager, changed duplicate to new, and replace to save.
+* When opening prompt manager on Mac, it now correctly selects the current prompt.
 * Prompt manager
 * Import [Awesome ChatGPT Prompts](https://github.com/f/awesome-chatgpt-prompts)
 * Partial support for GPT-4O: Throws an error in some cases but ignore the error.
