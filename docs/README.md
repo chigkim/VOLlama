@@ -41,7 +41,7 @@ VOLlama may take a while to load especially on Mac, so be patient. You'll eventu
 
 If you want responses to be read aloud automatically, you can enable the "Speak Response with System Voice" option from the chat menu.
 
-If you are operating Ollama on a different machine, configure the host address in the advanced menu.
+If you are operating Ollama on a different machine, configure the host address in Chat menu > API Settings > Ollama > Base URL.
 
 ## Shortcuts
 
