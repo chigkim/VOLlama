@@ -10,7 +10,7 @@ import os
 
 class RAG:
 	def __init__(self):
-		Settings.embed_model = OllamaEmbedding(base_url=settings.host, model_name="nomic-embed-text") # nomic-embed-text, mxbai-embed-large, snowflake-arctic-embed
+		Settings.embed_model = OllamaEmbedding(base_url=settings.ollama_base_url, model_name="nomic-embed-text") # nomic-embed-text, mxbai-embed-large, snowflake-arctic-embed
 		self.index = None
 
 	def load_index(self, folder):

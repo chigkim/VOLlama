@@ -1,5 +1,7 @@
 # Change log
 
+* OpenAILike Api for OpenAI Compatible platform such as openrouter.ai
+(* Moved host from advance menu to Api settings
 * Added edit menu and moved clear and copy from chat menu to edit menu.
 * Added models on chat menu.
 *     When create a new prompt, it saves automatically.

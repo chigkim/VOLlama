@@ -10,7 +10,8 @@ class APISettingsDialog(wx.Dialog):
 
 		# Define parameters and their tooltips
 		self.parameters = {
-			"llm_name": {"label": "LLM", "control": "Choice", "choices": ['Ollama', 'OpenAI', 'Gemini'], "initial": settings.llm_name},
+			"llm_name": {"label": "LLM", "control": "Choice", "choices": ['Ollama', 'OpenAI', 'OpenAILike', 'Gemini'], "initial": settings.llm_name},
+			"base_url": {"label": "Base Url", "control": "Text", "initial": self.get_base_url()},
 			"api_key": {"label": "API Key", "control": "Text", "initial": self.get_api_key()},
 		}
 
@@ -60,20 +61,31 @@ class APISettingsDialog(wx.Dialog):
 				value = widget.GetStringSelection()
 			else:
 				value = widget.GetValue()
-			if key == "api_key":
+			if key != "llm":
 				key = settings.llm_name+"_"+key
 			setattr(settings, key.lower(), value)
+
 		self.Close()
 
 	def get_api_key(self):
 		if settings.llm_name == "OpenAI":
 			return settings.openai_api_key
+		if settings.llm_name == "OpenAILike":
+			return settings.openailike_api_key
 		elif settings.llm_name == "Gemini":
 			return settings.gemini_api_key
-		else: return ""
+		else: return "Unused"
+
+	def get_base_url(self):
+		if settings.llm_name == "Ollama":
+			return settings.ollama_base_url
+		if settings.llm_name == "OpenAILike":
+			return settings.openailike_base_url
+		else: return "Unused"
 
 	def onSelectLlm(self, event):
 		settings.llm_name = self.controls['llm_name'].GetStringSelection()
 		self.controls['api_key'].SetValue(self.get_api_key())
+		self.controls['base_url'].SetValue(self.get_base_url())
 
 		
