@@ -1,21 +1,42 @@
 # Change log
 
+## v0.1.4-beta.3
+
 * OpenAILike Api for OpenAI Compatible platform such as openrouter.ai
-(* Moved host from advance menu to Api settings
+* Moved host from advance menu to Api settings
+* If you use Ollama in another machine, please reset the address for Ollama in Chat Menu> API Settings> Ollama > Base Url.
+
+## v0.1.4-beta.2
+
 * Added edit menu and moved clear and copy from chat menu to edit menu.
 * Added models on chat menu.
 *     When create a new prompt, it saves automatically.
 * On prompt manager, changed duplicate to new, and replace to save.
 * When opening prompt manager on Mac, it now correctly selects the current prompt.
+
+## v0.1.4-beta.1
+
 * Prompt manager
 * Import [Awesome ChatGPT Prompts](https://github.com/f/awesome-chatgpt-prompts)
 * Partial support for GPT-4O: Throws an error in some cases but ignore the error.
 * Able to attach entire document for long context model.
+
+## v0.1.3
+
 * Shortcut for API Settings: Control+(or Command)+Shift+A
 * Creates indexes for only supported file types.
+
+## v0.1.2
+
 * Remove single file package to speed up load time.
+
+## v0.1.1
+
 * Clearer status message
 * Created  an accessible status label for Mac.
+
+## v0.1.0
+
 * Reports progress during embedding.
 * Deploy 3 different web readers to retrieve webpages better.
 * Fixed a bug for configure voice not opening in some situations.
