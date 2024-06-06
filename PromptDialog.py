@@ -7,7 +7,7 @@ import os
 
 class PromptDialog(wx.Dialog):
 	def __init__(self, parent, prompt=""):
-		super().__init__(parent, title="System Prompt Manager", size=(400, 300))
+		super().__init__(parent, title="System Prompt Manager", size=(700, 500))
 
 		self.panel = wx.Panel(self)
 		self.prompt_file = os.path.join(SettingsManager().config_dir, "prompts.csv")
