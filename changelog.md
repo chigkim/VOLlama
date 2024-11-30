@@ -1,5 +1,11 @@
 # Change log
 
+## v0.1.4-beta.4
+
+* Increased Timeout for Ollama and OpenAILike to 1 hour
+* Min_p sampling
+* Minor UI Fixed
+
 ## v0.1.4-beta.3
 
 * OpenAILike Api for OpenAI Compatible platform such as openrouter.ai

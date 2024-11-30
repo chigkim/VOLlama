@@ -52,6 +52,11 @@
 			"description": "Works together with top-k. A higher value will lead to more diverse text, while a lower value will generate more focused and conservative text.",
 			"range": "0.0-1.0"
 		},
+		"min_p": {
+			"value": 0.05,
+			"description": "Alternative to the top_p: The parameter p represents the minimum probability for a token to be considered, relative to the probability of the most likely token.",
+			"range": "0.0-1.0"
+		},
 		"tfs_z": {
 			"value": 1.0,
 			"description": "Reduces the impact of less probable tokens from the output. A higher value will reduce the impact more.",
