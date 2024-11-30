@@ -1,5 +1,6 @@
 import wx
 
+
 class CopyDialog(wx.Dialog):
 	def __init__(self, parent, title):
 		super(CopyDialog, self).__init__(parent, title=title, size=(400, 300))
@@ -15,4 +16,3 @@ class CopyDialog(wx.Dialog):
 		self.SetSizer(self.mainSizer)
 		self.mainSizer.Fit(self)
 		self.Maximize(True)
-

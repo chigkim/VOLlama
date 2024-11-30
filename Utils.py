@@ -1,6 +1,7 @@
 import traceback
 import wx
 
+
 def displayError(e):
 	message = f"{e}\n{traceback.format_exc()}"
 	print(message)
@@ -13,4 +14,3 @@ def displayInfo(title, message):
 	dlg = wx.MessageDialog(None, message, title, wx.OK | wx.ICON_INFORMATION)
 	dlg.ShowModal()
 	dlg.Destroy()
-

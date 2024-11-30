@@ -3,6 +3,8 @@ import appdirs
 import os
 import json
 import threading
+
+
 def encrypt(key, value):
 	# Convert the string representation of the key back to bytes
 	key_bytes = key.encode()
@@ -11,6 +13,7 @@ def encrypt(key, value):
 	encrypted_value = cipher_suite.encrypt(value.encode()).decode()
 	return encrypted_value
 
+
 def decrypt(key, encrypted_value):
 	key_bytes = key.encode()
 	encrypted_value_bytes = encrypted_value.encode()
@@ -18,9 +21,12 @@ def decrypt(key, encrypted_value):
 	decrypted_value = cipher_suite.decrypt(encrypted_value_bytes).decode()
 	return decrypted_value
 
+
 class DotDict:
 	def __init__(self, dictionary=None, parent=None):
-		self.__dict__["_parent"] = parent  # Reference to the SettingsManager for autosave.
+		self.__dict__[
+			"_parent"
+		] = parent  # Reference to the SettingsManager for autosave.
 		if dictionary is None:
 			dictionary = {}
 		for key, value in dictionary.items():
@@ -42,6 +48,7 @@ class DotDict:
 			dict_[key] = value
 		return dict_
 
+
 class SettingsManager:
 	_instance = None
 	_lock = threading.Lock()
@@ -54,28 +61,31 @@ class SettingsManager:
 			return cls._instance
 
 	def __init__(self):
-		if self._initialized: return
+		if self._initialized:
+			return
 		self._initialized = True
-		self.app_name = 'VOLlama'
+		self.app_name = "VOLlama"
 		self.company_name = None
 		self.config_dir = appdirs.user_config_dir(self.app_name, self.company_name)
-		self.settings_file_path = os.path.join(self.config_dir, 'settings.json')
+		self.settings_file_path = os.path.join(self.config_dir, "settings.json")
 		os.makedirs(self.config_dir, exist_ok=True)
-		self.settings = self.load_settings()  # Then attempt to load settings, or initialize with defaults if loading fails.
+		self.settings = (
+			self.load_settings()
+		)  # Then attempt to load settings, or initialize with defaults if loading fails.
 
 	def save_settings(self):
 		settings_dict = self.settings.to_dict()
 		for key, value in settings_dict.items():
 			if "key" in key and value:
-				settings_dict[key] = encrypt(settings_dict['secret'], value)
-		with open(self.settings_file_path, 'w') as file:
-			json.dump(settings_dict, file, indent='\t')
+				settings_dict[key] = encrypt(settings_dict["secret"], value)
+		with open(self.settings_file_path, "w") as file:
+			json.dump(settings_dict, file, indent="\t")
 
 	def load_settings(self):
 		p = os.path.join(os.path.dirname(__file__), "default-parameters.json")
 		default_dict = json.load(open(p))
 		try:
-			with open(self.settings_file_path, 'r') as file:
+			with open(self.settings_file_path, "r") as file:
 				settings_dict = json.load(file)
 		except FileNotFoundError:
 			settings_dict = default_dict
@@ -86,13 +96,14 @@ class SettingsManager:
 				settings_dict[key] = value
 		if "secret" not in settings_dict:
 			secret = Fernet.generate_key().decode()
-			settings_dict['secret'] = secret
-		else: secret = settings_dict['secret']
+			settings_dict["secret"] = secret
+		else:
+			secret = settings_dict["secret"]
 
 		for key, value in settings_dict.items():
 			if "key" in key and value:
 				settings_dict[key] = decrypt(secret, value)
-			
+
 		self.settings = DotDict(settings_dict, parent=self)
 		self.save_settings()  # Save settings, ensuring any additions are persisted
 		return self.settings
@@ -105,5 +116,6 @@ class SettingsManager:
 	def settings(self, value):
 		self._settings = value
 		self.save_settings()
+
 
 settings = SettingsManager().settings
