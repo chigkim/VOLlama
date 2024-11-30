@@ -64,7 +64,7 @@ class Model:
 			settings.model_name = self.get_models()[0]
 		options = get_parameters()
 		if settings.llm_name == "Ollama":
-			Settings.llm = Ollama(model=settings.model_name, request_timeout=600, base_url=settings.ollama_base_url, additional_kwargs=options)
+			Settings.llm = Ollama(model=settings.model_name, request_timeout=3600, base_url=settings.ollama_base_url, additional_kwargs=options)
 		if settings.llm_name == "OpenAI":
 			if not settings.openai_api_key: return
 			additional_kwargs = {
@@ -95,8 +95,9 @@ class Model:
 				"max_tokens":options["num_ctx"],
 				"presence_penalty":options["presence_penalty"],
 				"frequency_penalty":options["frequency_penalty"],
+				"timeout":3600,
 			}
-			Settings.llm = OpenAILike(model = settings.model_name, api_base=settings.openailike_base_url, api_key=settings.openailike_api_key, additional_kwargs=additional_kwargs)
+			Settings.llm = OpenAILike(model = settings.model_name, api_base=settings.openailike_base_url, api_key=settings.openailike_api_key, timeout=3600, additional_kwargs=additional_kwargs)
 			Settings.llm.is_chat_model = True
 		else: return
 		Settings.chunk_size = settings.chunk_size
@@ -151,7 +152,7 @@ class Model:
 			Settings.callback_manager = CallbackManager([self.token_counter])
 		if self.document:
 			content += "\n---\n"+self.document
-			selfdocument = None
+			self.document = None
 		message = ChatMessage(role='user', content=content)
 		if self.image:
 			image = encode_image(self.image)
