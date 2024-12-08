@@ -1,4 +1,4 @@
-version = 34
+version = 35
 import wx
 import threading
 import sounddevice as sd
@@ -105,11 +105,11 @@ class ChatWindow(wx.Frame):
 		# self.Bind(wx.EVT_MENU, self.log, logMenu)
 
 		ragMenu = wx.Menu()
-		indexUrlMenu = ragMenu.Append(wx.ID_ANY, "Index &URL...\tCTRL+U")
+		indexUrlMenu = ragMenu.Append(wx.ID_ANY, "Index &URL...")
 		self.Bind(wx.EVT_MENU, self.onIndexURL, indexUrlMenu)
 		indexFileMenu = ragMenu.Append(wx.ID_ANY, "Index &File...\tCTRL+F")
 		self.Bind(wx.EVT_MENU, self.onIndexFile, indexFileMenu)
-		indexFolderMenu = ragMenu.Append(wx.ID_ANY, "Index Directory...\tCTRL+D")
+		indexFolderMenu = ragMenu.Append(wx.ID_ANY, "Index Directory...")
 		self.Bind(wx.EVT_MENU, self.onIndexFolder, indexFolderMenu)
 		loadIndexMenu = ragMenu.Append(wx.ID_ANY, "Load Index...")
 		self.Bind(wx.EVT_MENU, self.loadIndex, loadIndexMenu)
