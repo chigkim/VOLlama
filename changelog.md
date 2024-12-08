@@ -1,10 +1,12 @@
 # Change log
 
-## v0.1.4-beta.4
+## v0.2.0
 
+* Attach URL: CTRL+U
 * Increased Timeout for Ollama and OpenAILike to 1 hour
 * Min_p sampling
 * Minor UI Fixed
+* Provided patch to work with latest dependencies
 
 ## v0.1.4-beta.3
 
