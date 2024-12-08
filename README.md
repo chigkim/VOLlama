@@ -170,6 +170,6 @@ Make sure to use Python 3.12.
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-git apply lib-win.patch
+git apply lib-mac.patch
 ./build.sh
 ```
