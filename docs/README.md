@@ -1,14 +1,6 @@
 Accessible Chat Client for Ollama
 
-## Download Prerelease v0.1.4-beta.3
-
-* [Mac](https://github.com/chigkim/VOLlama/releases/download/v0.1.4.32/VOLlama-Mac.zip)
-* [Windows](https://github.com/chigkim/VOLlama/releases/download/v0.1.4.32/VOLlama-Win.zip)
-
-## Download v0.1.3
-
-* [Mac](https://github.com/chigkim/VOLlama/releases/download/v0.1.3.29/VOLlama-Mac.zip)
-* [Windows](https://github.com/chigkim/VOLlama/releases/download/v0.1.3.29/VOLlama-Win.zip)
+[Download the latest release](https://github.com/chigkim/VOLlama/releases/)
 
 ## Instructions
 
@@ -18,15 +10,13 @@ Download and install [Ollama](https://ollama.ai/).
 
 You will need a model to generate text. Execute the command below in terminal (or command-line on Windows) to download a model. If you prefer to use a [different model](https://ollama.ai/library), replace `llama3` with your chosen model.
 ```
-ollama pull llama3
+ollama pull llama3.1
 ```
 
 Optionally, If you want to utilize the image description feature, you need to download a multimodal (vision+language) model.
 ```
-ollama pull llava
+ollama pull llama3.2-vision
 ```
-
-There are also llava:13b and llava:34b which have higher accuracy but require more storage, memory, and computing power.
 
 Optionally, If you want to utilize the retrieval-augmented generation feature, you need to download `nomic-embed-text` for embedding.
 ```
@@ -67,12 +57,13 @@ This table lists the generation parameters available in VOLlama, along with thei
 | num_ctx | Sets the size of the context window used to generate the next token. Depends on the model's limit. | int | 4096 |
 | num_predict | Maximum number of tokens to predict during text generation. Use -1 for infinite, -2 to fill context.| int | -1 |
 | temperature | Adjusts the model's creativity. Higher values lead to more creative responses. Range: 0.0-2.0. | float | 0.8 |
-| repeat_penalty | Penalizes repetitions. Higher values increase the penalty. Range: 0.0-2.0. | float | 1.0 |
-| repeat_last_n | How far back the model checks to prevent repetition. 0 = disabled, -1 = num_ctx. | int | 64 |
 | top_k | Limits the likelihood of less probable responses. Higher values allow more diversity. Range: -1-100 | int | 40 |
 | top_p | Works with top_k to manage diversity of responses. Higher values lead to more diversity. Range: 0.0-1.0. | float | 0.95 |
-| tfs_z | Tail free sampling reduces the impact of less probable tokens. Higher values diminish this impact. | float | 1.0 |
+| min_p | The parameter p represents the minimum probability for a token to be considered, relative to the probability of the most likely token. Range: 0.0-1.0. | float | 0.05 |
 | typical_p | Sets a minimum likelihood threshold for considering a token. Range: 0.0-1.0. | float | 1.0 |
+| tfs_z | Tail free sampling reduces the impact of less probable tokens. Higher values diminish this impact. | float | 1.0 |
+| repeat_penalty | Penalizes repetitions. Higher values increase the penalty. Range: 0.0-2.0. | float | 1.0 |
+| repeat_last_n | How far back the model checks to prevent repetition. 0 = disabled, -1 = num_ctx. | int | 64 |
 | presence_penalty | Penalizes new tokens based on their presence so far. Range: 0.0-1.0. | float | 0.0 |
 | frequency_penalty | Penalizes new tokens based on their frequency so far. Range: 0.0-1.0. | float | 0.0 |
 | mirostat | Enables Mirostat sampling to control perplexity. 0 = disabled, 1 = Mirostat, 2 = Mirostat 2.0. | int | 0 |
@@ -155,4 +146,29 @@ docker stop ollama
 To restart Ollama, use the command below:
 ```
 docker start ollama
+```
+
+## Build from Source
+
+### Windows
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+build-pyinstaller
+git apply lib-win.patch
+build
+```
+
+### Mac
+
+Make sure to use Python 3.12.
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+git apply lib-win.patch
+./build.sh
 ```
