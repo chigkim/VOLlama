@@ -58,6 +58,8 @@ class ChatWindow(wx.Frame):
 		self.Bind(wx.EVT_MENU, self.onUploadImage, imageMenu)
 		documentMenu = chatMenu.Append(wx.ID_ANY, "Attach a &Document...\tCTRL+D")
 		self.Bind(wx.EVT_MENU, self.onUploadDocument, documentMenu)
+		urlMenu = chatMenu.Append(wx.ID_ANY, "Attach a &URL...\tCTRL+U")
+		self.Bind(wx.EVT_MENU, self.onUploadURL, urlMenu)
 		self.speakResponse = chatMenu.Append(
 			wx.ID_ANY, "Speak Response with System Voice", kind=wx.ITEM_CHECK
 		)
@@ -374,6 +376,15 @@ class ChatWindow(wx.Frame):
 			paths = fileDialog.GetPaths()
 			self.model.loadDocument(paths)
 		self.prompt.SetFocus()
+
+	def onUploadURL(self, e):
+		with wx.TextEntryDialog(
+			self, "Enter an url to retreive::", "URL", value="https://"
+		) as dlg:
+			if dlg.ShowModal() == wx.ID_CANCEL:
+				return
+			url = dlg.GetValue()
+			self.model.documentURL = url
 
 	def onIndexFile(self, event):
 		wildcard = "Supported Files (*.txt;*.pdf;*.docx;*.pptx;*.ppt;*.pptm;*.hwp;*.csv;*.epub;*.md;*.mbox)|*.txt;*.pdf;*.docx;*.pptx;*.ppt;*.pptm;*.hwp;*.csv;*.epub;*.md"

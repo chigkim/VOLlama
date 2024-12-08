@@ -26,6 +26,11 @@ from tiktoken_ext import openai_public
 from llama_index.core.callbacks import CallbackManager, TokenCountingHandler
 import base64
 from llama_index.core import SimpleDirectoryReader
+from llama_index.readers.web import (
+	MainContentExtractorReader,
+	TrafilaturaWebReader,
+	BeautifulSoupWebReader,
+)
 from llama_index.llms.openai_like import OpenAILike
 
 
@@ -39,6 +44,7 @@ class Model:
 		self.messages = []
 		self.generate = False
 		self.image = None
+		self.documentURL = None
 		self.document = None
 		self.rag = None
 		self.models = []
@@ -196,6 +202,28 @@ class Model:
 		texts = [f"```{d.metadata['file_name']}\n{d.text}\n```" for d in documents]
 		self.document = "\n---\n".join(texts)
 
+	def getURL(self, url):
+		documents = None
+		try:
+			documents = MainContentExtractorReader().load_data([url])
+			if len(documents) == 0 or documents[0].text.strip() == "":
+				raise (Exception("nothing found."))
+		except:
+			try:
+				documents = TrafilaturaWebReader().load_data([url])
+				if len(documents) == 0 or documents[0].text.strip() == "":
+					raise (Exception("nothing found."))
+			except:
+				try:
+					documents = BeautifulSoupWebReader().load_data([url])
+					if len(documents) == 0 or documents[0].text.strip() == "":
+						raise (Exception("nothing found."))
+				except Exception as e:
+					displayError(e)
+
+		if documents and documents[0].text.strip():
+			return documents[0].text.strip()
+
 	def setModel(self, name):
 		if settings.model_name == name:
 			return
@@ -215,9 +243,10 @@ class Model:
 		self.token_counter.reset_counts()
 		if not self.image:
 			Settings.callback_manager = CallbackManager([self.token_counter])
+		if self.documentURL:
+			self.document = self.getURL(self.documentURL)
 		if self.document:
 			content += "\n---\n" + self.document
-			self.document = None
 		message = ChatMessage(role="user", content=content)
 		if self.image:
 			image = encode_image(self.image)
@@ -323,5 +352,7 @@ class Model:
 		finally:
 			self.generate = False
 			self.image = None
+			self.document = None
+			self.documentURL = None
 			Settings.callback_manager = CallbackManager([])
 			wx.CallAfter(window.onStopGeneration)
