@@ -1,6 +1,7 @@
 rmdir/s /q __pycache__
 rmdir/s /q build
 rmdir/s /q dist
+rmdir/s /q pyinstaller
 pip uninstall -y pyinstaller
 git clone --depth 1 https://github.com/pyinstaller/pyinstaller
 cd pyinstaller\bootloader
