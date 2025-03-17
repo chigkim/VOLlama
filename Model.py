@@ -4,15 +4,11 @@ from ollama import Client as Ollama_Client
 from openai import OpenAI as OpenAI_client
 import google.generativeai as gemini_client
 from llama_index.core import Settings
-from llama_index.core.base.llms.types import ChatResponse
-from llama_index.core.schema import ImageDocument
+from llama_index.core.base.llms.types import ChatResponse, ImageBlock
 from llama_index.llms.ollama import Ollama
 from llama_index.llms.openai import OpenAI
 from llama_index.llms.gemini import Gemini
 from llama_index.core.llms import ChatMessage
-from llama_index.multi_modal_llms.openai.utils import (
-	generate_openai_multi_modal_chat_message,
-)
 import wx
 from Utils import displayError
 from pathlib import Path
@@ -55,19 +51,13 @@ class Model:
 	def get_models(self):
 		ids = []
 		if settings.llm_name == "Ollama":
-			ids = [
-				model["name"]
-				for model in Ollama_Client(host=settings.ollama_base_url).list()[
-					"models"
-				]
-			]
+			models = Ollama_Client(host=settings.ollama_base_url).list()["models"]
+			ids = [model.model for model in models]
 		if settings.llm_name == "OpenAI":
 			if not settings.openai_api_key:
 				return ids
 			client = OpenAI_client(api_key=settings.openai_api_key)
-			ids = [
-				i.id for i in list(client.models.list().data) if i.id.startswith("gpt")
-			]
+			ids = [i.id for i in list(client.models.list().data)]
 		if settings.llm_name == "OpenAILike":
 			client = OpenAI_client(
 				base_url=settings.openailike_base_url,
@@ -250,26 +240,11 @@ class Model:
 		message = ChatMessage(role="user", content=content)
 		if self.image:
 			image = encode_image(self.image)
-			document = ImageDocument(image=image, image_path=self.image)
-			if settings.llm_name == "Ollama":
-				message = ChatMessage(
-					role="user", content=content, additional_kwargs={"images": [image]}
-				)
-			elif settings.llm_name == "Gemini":
-				message = ChatMessage(
-					role="user",
-					content=content,
-					additional_kwargs={"images": [document]},
-				)
-			elif settings.llm_name == "OpenAI" or settings.llm_name == "OpenAILike":
-				message = generate_openai_multi_modal_chat_message(
-					prompt=content,
-					role="user",
-					image_documents=[document],
-					image_detail="auto",
-				)
-			else:
-				print("Unknown")
+			message = ChatMessage(
+				role="user",
+				content=content,
+			)
+			message.blocks.append(ImageBlock(image=image))
 		try:
 			if content.startswith("/q ") and self.rag:
 				if not self.rag.index:
@@ -281,8 +256,6 @@ class Model:
 				response = self.rag.ask(message.content)
 			else:
 				self.messages.append(message)
-				if settings.llm_name == "Gemini" and self.image:
-					self.messages = self.messages[-1:]
 				wx.CallAfter(window.setStatus, "Processing...")
 				response = Settings.llm.stream_chat(self.messages)
 			assistant_name = settings.model_name.capitalize()
@@ -290,6 +263,7 @@ class Model:
 				assistant_name = assistant_name[: assistant_name.index(":")]
 			wx.CallAfter(window.response.AppendText, assistant_name + ": ")
 			self.generate = True
+			# print(self.messages)
 			message = ""
 			sentence = ""
 			for chunk in response:
@@ -325,6 +299,7 @@ class Model:
 				isinstance(data, ChatResponse)
 				and hasattr(data, "raw")
 				and "total_duration" in data.raw
+				and data.raw["total_duration"] is not None
 			):
 				data = data.raw
 				div = 1000000000
@@ -343,8 +318,6 @@ class Model:
 				wx.CallAfter(window.setStatus, status_message)
 			else:
 				wx.CallAfter(window.setStatus, "Finished")
-			if self.image:
-				self.messages[-1] = ChatMessage(role="user", content=content)
 			self.messages.append(ChatMessage(role="assistant", content=message.strip()))
 		except Exception as e:
 			self.messages.pop()
