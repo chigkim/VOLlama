@@ -1,4 +1,4 @@
-version = 36
+version = 37
 import wx
 import threading
 import sounddevice as sd
@@ -43,6 +43,9 @@ class ChatWindow(wx.Frame):
 		self.historyIndex = len(self.model.messages)
 		self.refreshModels()
 		self.prompt.SetFocus()
+		self.image = None
+		self.document = None
+		self.documentURL = None
 		threading.Thread(target=check_update, args=(version,)).start()
 
 	def InitUI(self):
@@ -304,8 +307,9 @@ class ChatWindow(wx.Frame):
 		self.model.generate = False
 		self.speech.stop()
 		self.prompt.SetFocus()
-		self.historyIndex = len(self.model.messages)
-		self.prompt.SetValue("")
+		if self.historyIndex < len(self.model.messages):
+			self.historyIndex = len(self.model.messages)
+			self.prompt.SetValue("")
 		self.sendButton.SetLabel("Send")
 
 	def onStopGeneration(self):
@@ -316,7 +320,17 @@ class ChatWindow(wx.Frame):
 	def OnSend(self, event):
 		def processMessage(message):
 			play("send.wav")
+			if self.image:
+				self.model.image = self.image
+				self.image = None
+			if 			self.document:
+				self.model.loadDocument(self.document)
+				self.document = None
+			if self.documentURL:
+				self.model.documentURL = self.documentURL
+				self.documentURL = None
 			self.model.ask(message, self)
+
 
 		if not self.model.generate:
 			message = self.prompt.GetValue()
@@ -360,7 +374,7 @@ class ChatWindow(wx.Frame):
 			filename = dlg.GetFilename()
 			dirname = dlg.GetDirectory()
 			file = os.path.join(dirname, filename)
-			self.model.image = file
+			self.image = file
 			self.prompt.SetFocus()
 
 	def onUploadDocument(self, event):
@@ -374,7 +388,7 @@ class ChatWindow(wx.Frame):
 			if fileDialog.ShowModal() == wx.ID_CANCEL:
 				return
 			paths = fileDialog.GetPaths()
-			self.model.loadDocument(paths)
+			self.document = paths
 		self.prompt.SetFocus()
 
 	def onUploadURL(self, e):
@@ -384,7 +398,7 @@ class ChatWindow(wx.Frame):
 			if dlg.ShowModal() == wx.ID_CANCEL:
 				return
 			url = dlg.GetValue()
-			self.model.documentURL = url
+			self.documentURL = url
 
 	def onIndexFile(self, event):
 		wildcard = "Supported Files (*.txt;*.pdf;*.docx;*.pptx;*.ppt;*.pptm;*.hwp;*.csv;*.epub;*.md;*.mbox)|*.txt;*.pdf;*.docx;*.pptx;*.ppt;*.pptm;*.hwp;*.csv;*.epub;*.md"
