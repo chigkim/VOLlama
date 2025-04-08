@@ -102,7 +102,10 @@ class SettingsManager:
 
 		for key, value in settings_dict.items():
 			if "key" in key and value:
-				settings_dict[key] = decrypt(secret, value)
+				if value == "YOUR_API_KEY":
+					settings_dict[key] = "YOUR_API_KEY"
+				else:
+					settings_dict[key] = decrypt(secret, value)
 
 		self.settings = DotDict(settings_dict, parent=self)
 		self.save_settings()  # Save settings, ensuring any additions are persisted
