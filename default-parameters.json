@@ -6,7 +6,7 @@
 	"openailike_base_url": "http://localhost:8080/v1/",
 	"openailike_api_key": "YOUR_API_KEY",
 	"gemini_api_key": "YOUR_API_KEY",
-	"system": "",
+	"system": null,
 	"speakResponse": false,
 	"voice": "unknown",
 	"rate": 0.0,
@@ -18,82 +18,82 @@
 	"show_context": false,
 	"parameters": {
 		"num_ctx": {
-			"value": 4096,
+			"value": null,
 			"description": "Sets the size of the context window used to generate the next token.",
 			"range": "The max context length depends on the model."
 		},
 		"num_predict": {
-			"value": -1,
+			"value": null,
 			"description": "Maximum number of tokens to predict when generating text.",
 			"range": "-1 = infinity, -2 = until context filled"
 		},
 		"temperature": {
-			"value": 0.8,
+			"value": null,
 			"description": "Increasing the temperature will make the model answer more creatively.",
 			"range": "0.0-2.0"
 		},
 		"top_k": {
-			"value": 40,
+			"value": null,
 			"description": "Reduces the probability of generating nonsense.",
 			"range": "-1-100"
 		},
 		"top_p": {
-			"value": 0.95,
+			"value": null,
 			"description": "Works together with top-k. A higher value will lead to more diverse text, while a lower value will generate more focused and conservative text.",
 			"range": "0.0-1.0"
 		},
 		"min_p": {
-			"value": 0.05,
+			"value": null,
 			"description": "Alternative to the top_p: The parameter p represents the minimum probability for a token to be considered, relative to the probability of the most likely token.",
 			"range": "0.0-1.0"
 		},
 		"typical_p": {
-			"value": 1.0,
+			"value": null,
 			"description": "Reduces the impact of less probable tokens from the output.",
 			"range": "0.0-1.0"
 		},
 		"tfs_z": {
-			"value": 1.0,
+			"value": null,
 			"description": "Reduces the impact of less probable tokens from the output. A higher value will reduce the impact more.",
 			"range": "0.0-1.0"
 		},
 		"repeat_penalty": {
-			"value": 1.0,
+			"value": null,
 			"description": "Higher value will penalize repetitions more strongly.",
 			"range": "0.0-2.0"
 		},
 		"repeat_last_n": {
-			"value": 64,
+			"value": null,
 			"description": "Sets how far back for the model to look back to prevent repetition.",
 			"range": "0=disabled, -1=num_ctx"
 		},
 		"presence_penalty": {
-			"value": 0.0,
+			"value": null,
 			"description": "Penalizes new tokens based on their presence in the text so far.",
 			"range": "0.0-1.0"
 		},
 		"frequency_penalty": {
-			"value": 0.0,
+			"value": null,
 			"description": "Penalizes new tokens based on their frequency in the text so far.",
 			"range": "0.0-1.0"
 		},
 		"mirostat": {
-			"value": 0,
+			"value": null,
 			"description": "Enables or disables mirostat.",
 			"range": "0=disable, 1=v1, 2=v2"
 		},
 		"mirostat_tau": {
-			"value": 5.0,
+			"value": null,
 			"description": "Controls the balance between coherence and diversity of the output. A lower value will result in more focused and coherent text.",
 			"range": "0.0-10.0"
 		},
 		"mirostat_eta": {
-			"value": 0.1,
+			"value": null,
 			"description": "Influences how quickly the algorithm responds to feedback from the generated text.",
 			"range": "0.0-1.0"
 		},
 		"num_keep": {
-			"value": 0,
+			"value": null,
 			"description": "Number of tokens to keep unchanged at the beginning of the generated text.",
 			"range": "Integer value"
 		},
@@ -108,7 +108,7 @@
 			"range": "Array of strings"
 		},
 		"seed": {
-			"value": -1,
+			"value": null,
 			"description": "Sets the random number seed to use for generation. Setting this to a specific number will make the model generate the same text for the same prompt.",
 			"range": "Integer value"
 		}

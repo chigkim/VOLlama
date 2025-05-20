@@ -80,7 +80,8 @@ class Model:
 	def init_llm(self):
 		if settings.model_name not in self.models:
 			settings.model_name = self.get_models()[0]
-		options = get_parameters()
+		options = {k: v for k, v in get_parameters().items() if v is not None}
+		print(options)
 		if settings.llm_name == "Ollama":
 			Settings.llm = Ollama(
 				model=settings.model_name,
@@ -91,14 +92,10 @@ class Model:
 		if settings.llm_name == "OpenAI":
 			if not settings.openai_api_key:
 				return
-			additional_kwargs = {
-				"seed": options["seed"],
-				"temperature": options["temperature"],
-				"top_p": options["top_p"],
-				"max_tokens": options["num_ctx"],
-				"presence_penalty": options["presence_penalty"],
-				"frequency_penalty": options["frequency_penalty"],
-			}
+			keys = ["temperature", "top_p", "presence_penalty", "frequency_penalty", "seed"]
+			additional_kwargs = {k: v for k, v in options.items() if k in keys}
+			additional_kwargs["max_tokens"] = options["num_predict"]
+			print(additional_kwargs)
 			Settings.llm = OpenAI(
 				model=settings.model_name,
 				api_key=settings.openai_api_key,
@@ -108,27 +105,21 @@ class Model:
 			if not settings.gemini_api_key:
 				return
 			os.environ["GOOGLE_API_KEY"] = settings.gemini_api_key
-			generate_kwargs = {
-				"temperature": options["temperature"],
-				"top_p": options["top_p"],
-				"top_k": options["top_k"],
-				"max_output_tokens": options["num_ctx"],
-			}
+			keys = ["temperature", "top_p", "top_k"]
+			generate_kwargs = {k: v for k, v in options.items() if k in keys}
+			generate_kwargs["max_output_tokens"] = options["num_predict"]
+			print(generate_kwargs)
 			Settings.llm = Gemini(
 				model_name=settings.model_name, generate_kwargs=generate_kwargs
 			)
 		elif settings.llm_name == "OpenAILike":
 			if not settings.openailike_base_url or not settings.openailike_api_key:
 				return
-			additional_kwargs = {
-				"seed": options["seed"],
-				"temperature": options["temperature"],
-				"top_p": options["top_p"],
-				"max_tokens": options["num_ctx"],
-				"presence_penalty": options["presence_penalty"],
-				"frequency_penalty": options["frequency_penalty"],
-				"timeout": 3600,
-			}
+			keys = ["temperature", "top_p", "presence_penalty", "frequency_penalty", "seed"]
+			additional_kwargs = {k: v for k, v in options.items() if k in keys}
+			additional_kwargs["max_tokens"] = options["num_predict"]
+			additional_kwargs["timeout"] = 3600
+			print(additional_kwargs)
 			Settings.llm = OpenAILike(
 				model=settings.model_name,
 				api_base=settings.openailike_base_url,
@@ -221,6 +212,8 @@ class Model:
 
 	def setSystem(self, system):
 		if system == "":
+			if len(self.messages)>0 and self.messages[0].role == "system":
+				del self.messages[0]
 			return
 		system = ChatMessage(role="system", content=system)
 		if len(self.messages) == 0 or self.messages[0].role != "system":

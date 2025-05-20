@@ -29,6 +29,8 @@ class ParametersDialog(wx.Dialog):
 			if isinstance(val["value"], bool):
 				ctrl = wx.CheckBox(scroll_area)
 				ctrl.SetValue(val["value"])
+			elif val["value"] is None:
+				ctrl = wx.TextCtrl(scroll_area, value="")
 			elif isinstance(val["value"], int) or isinstance(val["value"], float):
 				ctrl = wx.TextCtrl(scroll_area, value=str(val["value"]))
 			else:
@@ -61,21 +63,24 @@ class ParametersDialog(wx.Dialog):
 		panel.SetSizer(vbox)
 
 	def save(self):
+		ints = ["num_ctx", "num_predict", "top_k", "repeat_last_n", "mirostat", "num_keep", "seed"]
+		floats = ["temperature", "top_p", "min_p", "typical_p", "tfs_z", "repeat_penalty", "presence_penalty", "frequency_penalty", "mirostat_tau", "mirostat_eta"]
 		for key, ctrl in self.controls.items():
 			if isinstance(ctrl, wx.CheckBox):
 				settings.parameters[key]["value"] = ctrl.IsChecked()
 			else:
 				value = ctrl.GetValue()
 				# Convert value back to the appropriate type based on its original type
-				if settings.parameters[key]["value"] is not None:
-					if isinstance(settings.parameters[key]["value"], int):
-						value = int(value)
-					elif isinstance(settings.parameters[key]["value"], float):
-						value = float(value)
-					elif isinstance(settings.parameters[key]["value"], list):
-						value = value.split(", ")
-						if value == [""]:
-							value = []
+				if value == "":
+					value = None
+				elif key in ints:
+					value = int(value)
+				elif key in floats:
+					value = float(value)
+				elif isinstance(settings.parameters[key]["value"], list):
+					value = value.split(", ")
+					if value == [""]:
+						value = []
 				settings.parameters[key]["value"] = value
 		settings.parameters = settings.parameters
 

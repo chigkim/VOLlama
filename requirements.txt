@@ -10,6 +10,7 @@ llama-index-core==0.12.24
 llama-index-embeddings-ollama==0.6.0
 llama-index-llms-ollama==0.5.3
 llama-index-llms-gemini==0.4.11
+llama-index-llms-openai==0.3.35
 llama-index-llms-openai-like==0.3.4
 #llama-index-multi-modal-llms-openai
 #llama-index-multi-modal-llms-ollama

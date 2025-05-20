@@ -1,5 +1,15 @@
 # Change log
 
+## v0.2.1
+
+* Fixed the bug for follow up question with image
+* No longer throws an error when there's no settings.
+* Image, document, and URL uploaded mid generation don't get cleared.
+* Only clear prompt when you press escape and you were focused on a previous message.
+* List all models returned from server
+* Upgrade dependencies
+* Other minor bug fixes and performance improvements
+
 ## v0.2.0
 
 * Attach URL: CTRL+U
