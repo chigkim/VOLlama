@@ -6,7 +6,7 @@
 	"openailike_base_url": "http://localhost:8080/v1/",
 	"openailike_api_key": "YOUR_API_KEY",
 	"gemini_api_key": "YOUR_API_KEY",
-	"system": null,
+	"system": "",
 	"speakResponse": false,
 	"voice": "unknown",
 	"rate": 0.0,
@@ -18,7 +18,7 @@
 	"show_context": false,
 	"parameters": {
 		"num_ctx": {
-			"value": null,
+			"value": 8192,
 			"description": "Sets the size of the context window used to generate the next token.",
 			"range": "The max context length depends on the model."
 		},
@@ -110,6 +110,11 @@
 		"seed": {
 			"value": null,
 			"description": "Sets the random number seed to use for generation. Setting this to a specific number will make the model generate the same text for the same prompt.",
+			"range": "Integer value"
+		},
+		"num_gpu": {
+			"value": null,
+			"description": "Sets the number of layers to load to GPU.",
 			"range": "Integer value"
 		}
 	}

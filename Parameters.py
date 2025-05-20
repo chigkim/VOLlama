@@ -63,7 +63,7 @@ class ParametersDialog(wx.Dialog):
 		panel.SetSizer(vbox)
 
 	def save(self):
-		ints = ["num_ctx", "num_predict", "top_k", "repeat_last_n", "mirostat", "num_keep", "seed"]
+		ints = ["num_ctx", "num_predict", "top_k", "repeat_last_n", "mirostat", "num_keep", "seed", "num_gpu"]
 		floats = ["temperature", "top_p", "min_p", "typical_p", "tfs_z", "repeat_penalty", "presence_penalty", "frequency_penalty", "mirostat_tau", "mirostat_eta"]
 		for key, ctrl in self.controls.items():
 			if isinstance(ctrl, wx.CheckBox):

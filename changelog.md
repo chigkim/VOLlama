@@ -1,5 +1,13 @@
 # Change log
 
+## v0.2.2
+
+* Correctly map num_predict to max_tokens.
+* Important: Set num_predict to a positive value, such as 1024.
+* Parameters (except num_ctx) can be left empty to use the engine’s default values.
+* The system message can be empty to use the model’s default.
+* You can now specify the num_gpu parameter to set the number of layers loaded to the GPU for Ollama.
+
 ## v0.2.1
 
 * Fixed the bug for follow up question with image

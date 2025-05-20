@@ -81,7 +81,6 @@ class Model:
 		if settings.model_name not in self.models:
 			settings.model_name = self.get_models()[0]
 		options = {k: v for k, v in get_parameters().items() if v is not None}
-		print(options)
 		if settings.llm_name == "Ollama":
 			Settings.llm = Ollama(
 				model=settings.model_name,
@@ -94,8 +93,8 @@ class Model:
 				return
 			keys = ["temperature", "top_p", "presence_penalty", "frequency_penalty", "seed"]
 			additional_kwargs = {k: v for k, v in options.items() if k in keys}
-			additional_kwargs["max_tokens"] = options["num_predict"]
-			print(additional_kwargs)
+			if "num_predict" in options:
+				additional_kwargs["max_tokens"] = options["num_predict"]
 			Settings.llm = OpenAI(
 				model=settings.model_name,
 				api_key=settings.openai_api_key,
@@ -107,8 +106,8 @@ class Model:
 			os.environ["GOOGLE_API_KEY"] = settings.gemini_api_key
 			keys = ["temperature", "top_p", "top_k"]
 			generate_kwargs = {k: v for k, v in options.items() if k in keys}
-			generate_kwargs["max_output_tokens"] = options["num_predict"]
-			print(generate_kwargs)
+			if "num_predict" in options:
+				generate_kwargs["max_output_tokens"] = options["num_predict"]
 			Settings.llm = Gemini(
 				model_name=settings.model_name, generate_kwargs=generate_kwargs
 			)
@@ -117,9 +116,9 @@ class Model:
 				return
 			keys = ["temperature", "top_p", "presence_penalty", "frequency_penalty", "seed"]
 			additional_kwargs = {k: v for k, v in options.items() if k in keys}
-			additional_kwargs["max_tokens"] = options["num_predict"]
+			if "num_predict" in options:
+				additional_kwargs["max_tokens"] = options["num_predict"]
 			additional_kwargs["timeout"] = 3600
-			print(additional_kwargs)
 			Settings.llm = OpenAILike(
 				model=settings.model_name,
 				api_base=settings.openailike_base_url,
@@ -256,7 +255,6 @@ class Model:
 				assistant_name = assistant_name[: assistant_name.index(":")]
 			wx.CallAfter(window.response.AppendText, assistant_name + ": ")
 			self.generate = True
-			# print(self.messages)
 			message = ""
 			sentence = ""
 			for chunk in response:
