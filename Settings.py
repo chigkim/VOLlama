@@ -3,7 +3,14 @@ import appdirs
 import os
 import json
 import threading
+from pathlib import Path
 
+def config_dir():
+	app_name = "VOLlama"
+	company_name = None
+	dir = Path(appdirs.user_config_dir(app_name, company_name))
+	dir.mkdir(parents=True, exist_ok=True)
+	return dir
 
 def encrypt(key, value):
 	# Convert the string representation of the key back to bytes
@@ -64,11 +71,7 @@ class SettingsManager:
 		if self._initialized:
 			return
 		self._initialized = True
-		self.app_name = "VOLlama"
-		self.company_name = None
-		self.config_dir = appdirs.user_config_dir(self.app_name, self.company_name)
-		self.settings_file_path = os.path.join(self.config_dir, "settings.json")
-		os.makedirs(self.config_dir, exist_ok=True)
+		self.settings_file_path = config_dir()/"settings.json"
 		self.settings = (
 			self.load_settings()
 		)  # Then attempt to load settings, or initialize with defaults if loading fails.
@@ -78,14 +81,14 @@ class SettingsManager:
 		for key, value in settings_dict.items():
 			if "key" in key and value:
 				settings_dict[key] = encrypt(settings_dict["secret"], value)
-		with open(self.settings_file_path, "w") as file:
+		with self.settings_file_path.open("w") as file:
 			json.dump(settings_dict, file, indent="\t")
 
 	def load_settings(self):
 		p = os.path.join(os.path.dirname(__file__), "default-parameters.json")
 		default_dict = json.load(open(p))
 		try:
-			with open(self.settings_file_path, "r") as file:
+			with self.settings_file_path.open("r") as file:
 				settings_dict = json.load(file)
 		except FileNotFoundError:
 			settings_dict = default_dict

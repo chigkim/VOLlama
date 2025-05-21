@@ -1,11 +1,11 @@
-version = 40
+version = 41
 import wx
 import threading
 import sounddevice as sd
 import soundfile as sf
 import os
 from Model import Model
-from Settings import settings
+from Settings import settings, config_dir
 from CopyDialog import CopyDialog
 import codecs
 import json
@@ -17,6 +17,8 @@ from APISettingsDialog import APISettingsDialog
 from Utils import displayError
 from llama_index.core.llms import ChatMessage
 from PromptDialog import PromptDialog
+import functools
+
 
 
 def playSD(file):
@@ -38,6 +40,7 @@ class ChatWindow(wx.Frame):
 		self.Maximize(True)
 		self.Centre()
 		self.Show()
+		self.PRESETS_PATH = config_dir()/"presets.json"
 		self.model = Model()
 		self.model.setSystem(settings.system)
 		self.historyIndex = len(self.model.messages)
@@ -72,6 +75,8 @@ class ChatWindow(wx.Frame):
 		self.Bind(wx.EVT_MENU, self.speech.present_voice_rate_dialog, self.configSpeech)
 		self.modelsMenu = chatMenu.Append(wx.ID_ANY, "&Models\tCTRL+l")
 		self.Bind(wx.EVT_MENU, self.FocusOnModelList, self.modelsMenu)
+		self.presetMenu = chatMenu.Append(wx.ID_ANY, "&Presets\tCTRL+p")
+		self.Bind(wx.EVT_MENU, self.onPresetPopup, self.presetMenu)
 		self.apiSettingsMenu = chatMenu.Append(
 			wx.ID_ANY, "&API Settings...\tCTRL+SHIFT+A"
 		)
@@ -132,6 +137,10 @@ class ChatWindow(wx.Frame):
 		self.modelList = wx.Choice(self.toolbar, choices=[])
 		self.modelList.Bind(wx.EVT_CHOICE, self.onSelectModel)
 		self.toolbar.AddControl(self.modelList, "Model")
+
+		self.presetBtn = wx.Button(self.toolbar, label="Preset: <none>")
+		self.toolbar.AddControl(self.presetBtn, "Preset")
+		self.presetBtn.Bind(wx.EVT_BUTTON, self.onPresetPopup)
 
 		self.copyButton = wx.Button(self.toolbar, label="Copy Last Message")
 		self.toolbar.AddControl(self.copyButton, "Copy Message")
@@ -500,6 +509,113 @@ class ChatWindow(wx.Frame):
 
 	def OnExit(self, event):
 		self.Destroy()
+
+	def load_presets(self):
+		try:
+			with self.PRESETS_PATH.open("r", encoding="utf-8") as f:
+				return json.load(f)
+		except (IOError, json.JSONDecodeError):
+			return {}
+
+	def save_presets(self, presets):
+		with self.PRESETS_PATH.open("w", encoding="utf-8") as f:
+			json.dump(presets, f, indent=2)
+
+	def onPresetPopup(self, event):
+		presets = self.load_presets()
+		active = self.presetBtn.GetLabel().replace("Preset: ", "").strip()
+		menu = wx.Menu()
+
+		for name in presets:
+			pid = wx.NewIdRef()
+			item = menu.Append(pid, name, kind=wx.ITEM_CHECK)
+			if name == active:
+				item.Check(True)
+			self.Bind(
+				wx.EVT_MENU, 
+				functools.partial(self.apply_preset, name=name), 
+				id=pid
+			)
+		menu.AppendSeparator()
+		# New / Save / Delete entries
+		new_id   = wx.NewIdRef()
+		menu.Append(new_id,  "New…")
+		self.Bind(wx.EVT_MENU, self.new_preset,  id=new_id)
+
+		save_id  = wx.NewIdRef()
+		menu.Append(save_id, "Save…")
+		self.Bind(wx.EVT_MENU, self.save_preset, id=save_id)
+
+		del_id   = wx.NewIdRef()
+		menu.Append(del_id,  "Delete…")
+		self.Bind(wx.EVT_MENU, self.delete_preset, id=del_id)
+
+		# Show the menu under the button
+		self.toolbar.PopupMenu(menu, self.presetBtn.Position)
+		menu.Destroy()
+		self.FocusOnPrompt()
+		
+	def gather_current_settings(self):
+		return {
+			"llm_name":	settings.llm_name,
+			"model_name":  settings.model_name,
+			"system":	  settings.system,
+			"parameters":  settings.parameters,
+		}
+
+	def apply_preset(self, event, name):
+		presets = self.load_presets()
+		p = presets.get(name)
+		if not p:
+			return
+		settings.llm_name   = p["llm_name"]
+		settings.model_name = p["model_name"]
+		settings.system	 = p["system"]
+		settings.parameters = p["parameters"]
+		# refresh UI
+		self.presetBtn.SetLabel(f"Preset: {name}")
+		self.refreshModels()
+
+	def new_preset(self, event):
+		dlg = wx.TextEntryDialog(self, "Enter new preset name:", "New Preset")
+		if dlg.ShowModal() != wx.ID_OK:
+			return
+		name = dlg.GetValue().strip()
+		dlg.Destroy()
+		presets = self.load_presets()
+		if name in presets:
+			wx.MessageBox(f"«{name}» already exists.", "Error", wx.ICON_ERROR)
+			return
+		presets[name] = self.gather_current_settings()
+		self.save_presets(presets)
+		self.presetBtn.SetLabel(f"Preset: {name}")
+
+	def save_preset(self, event):
+		"""Overwrite the currently selected preset after confirmation."""
+		label = self.presetBtn.GetLabel()            # e.g. "Preset: MyPreset"
+		name = label.replace("Preset: ", "").strip()
+		if name in ("<none>", ""):
+			wx.MessageBox("No preset selected to save.", "Info", wx.ICON_INFORMATION)
+			return
+		if wx.MessageBox(f"Overwrite “{name}”?", "Confirm", wx.YES_NO|wx.ICON_QUESTION) != wx.YES:
+			return
+		presets = self.load_presets()
+		presets[name] = self.gather_current_settings()
+		self.save_presets(presets)
+
+	def delete_preset(self, event):
+		"""Delete the currently selected preset after confirmation."""
+		label = self.presetBtn.GetLabel()
+		name = label.replace("Preset: ", "").strip()
+		if name in ("<none>", ""):
+			wx.MessageBox("No preset selected to delete.", "Info", wx.ICON_INFORMATION)
+			return
+		if wx.MessageBox(f"Delete “{name}” forever?", "Confirm", wx.YES_NO|wx.ICON_WARNING) != wx.YES:
+			return
+		presets = self.load_presets()
+		presets.pop(name, None)
+		self.save_presets(presets)
+		self.presetBtn.SetLabel("Preset: <none>")
 
 	def log(self, e):
 		print(settings.to_dict())
