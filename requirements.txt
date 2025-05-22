@@ -22,3 +22,4 @@ cryptography
 MainContentExtractor
 EbookLib
 html2text
+transformers==4.51.3

@@ -1,5 +1,11 @@
 # Change log
 
+## v0.3.2
+
+* Use Chat > Presets to save server type, model, system message, and generation parameters.
+* Press Ctrl/Cmd+p to quickly switch between your favorite presets.
+* Settings aren't saved to a preset until you click Save in the Preset menu.
+
 ## v0.2.2
 
 * Correctly map num_predict to max_tokens.
