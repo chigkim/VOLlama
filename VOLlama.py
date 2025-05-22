@@ -524,7 +524,7 @@ class ChatWindow(wx.Frame):
         active = self.presetBtn.GetLabel().replace("Preset: ", "").strip()
         menu = wx.Menu()
 
-        for name in presets:
+        for name in sorted(presets):
             pid = wx.NewIdRef()
             item = menu.Append(pid, name, kind=wx.ITEM_CHECK)
             if name == active:
