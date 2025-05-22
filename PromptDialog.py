@@ -2,7 +2,7 @@ import wx
 import pandas as pd
 import requests
 import io
-from Settings import SettingsManager
+from Settings import SettingsManager, config_dir
 import os
 
 
@@ -11,7 +11,7 @@ class PromptDialog(wx.Dialog):
         super().__init__(parent, title="System Prompt Manager", size=(800, 600))
 
         self.panel = wx.Panel(self)
-        self.prompt_file = os.path.join(SettingsManager().config_dir, "prompts.csv")
+        self.prompt_file = config_dir()/"prompts.csv"
         if os.path.exists(self.prompt_file):
             self.prompt_data = pd.read_csv(self.prompt_file)
             self.prompt_data = self.prompt_data.sort_values(by="act").reset_index(

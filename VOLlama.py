@@ -593,13 +593,6 @@ class ChatWindow(wx.Frame):
         if name in ("<none>", ""):
             wx.MessageBox("No preset selected to save.", "Info", wx.ICON_INFORMATION)
             return
-        if (
-            wx.MessageBox(
-                f"Overwrite “{name}”?", "Confirm", wx.YES_NO | wx.ICON_QUESTION
-            )
-            != wx.YES
-        ):
-            return
         presets = self.load_presets()
         presets[name] = self.gather_current_settings()
         self.save_presets(presets)
