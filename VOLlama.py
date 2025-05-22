@@ -571,7 +571,9 @@ class ChatWindow(wx.Frame):
         # refresh UI
         self.presetBtn.SetLabel(f"Preset: {name}")
         self.refreshModels()
-
+        self.OnNewChat(None)
+        
+        
     def new_preset(self, event):
         dlg = wx.TextEntryDialog(self, "Enter new preset name:", "New Preset")
         if dlg.ShowModal() != wx.ID_OK:
