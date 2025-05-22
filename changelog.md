@@ -1,6 +1,11 @@
 # Change log
 
-## v0.3.2
+## v0.3.1
+
+* Fixed the bug where selecting a preset doesn't set the system message.
+* Selecting a preset starts a new chat.
+
+## v0.3.0
 
 * Use Chat > Presets to save server type, model, system message, and generation parameters.
 * Press Ctrl/Cmd+p to quickly switch between your favorite presets.

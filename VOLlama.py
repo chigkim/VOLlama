@@ -1,4 +1,4 @@
-version = 41
+version = 42
 import wx
 import threading
 import sounddevice as sd
@@ -572,8 +572,7 @@ class ChatWindow(wx.Frame):
         self.presetBtn.SetLabel(f"Preset: {name}")
         self.refreshModels()
         self.OnNewChat(None)
-        
-        
+
     def new_preset(self, event):
         dlg = wx.TextEntryDialog(self, "Enter new preset name:", "New Preset")
         if dlg.ShowModal() != wx.ID_OK:
