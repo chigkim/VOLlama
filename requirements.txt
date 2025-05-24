@@ -8,7 +8,7 @@ PyWin32; sys_platform == 'win32'
 PyObjC; sys_platform == 'darwin'
 llama-index-core==0.12.37
 llama-index-embeddings-ollama==0.6.0
-llama-index-llms-ollama==0.5.4
+llama-index-llms-ollama==0.5.6
 llama-index-llms-gemini==0.4.14
 llama-index-llms-openai==0.3.42
 llama-index-llms-openai-like==0.3.5

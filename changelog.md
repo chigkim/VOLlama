@@ -1,5 +1,10 @@
 # Change log
 
+# # v0.3.2
+
+* It displays presets in alphabetical order.
+* When temperature is not set, llama-index-llms-ollama sends none as temperature value to use the default temperature from the model.
+
 ## v0.3.1
 
 * Fixed the bug where selecting a preset doesn't set the system message.
