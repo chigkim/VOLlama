@@ -120,6 +120,10 @@ def get_parameters():
             if key in parameters:
                 continue
             parameters[key] = value
+        keys = list(parameters.keys())
+        for key in keys:
+            if key not in default:
+                del parameters[key]
         settings.parameters = parameters
     options = {}
     for key, value in settings.parameters.items():

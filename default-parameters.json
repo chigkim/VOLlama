@@ -52,11 +52,6 @@
 			"description": "Reduces the impact of less probable tokens from the output.",
 			"range": "0.0-1.0"
 		},
-		"tfs_z": {
-			"value": null,
-			"description": "Reduces the impact of less probable tokens from the output. A higher value will reduce the impact more.",
-			"range": "0.0-1.0"
-		},
 		"repeat_penalty": {
 			"value": null,
 			"description": "Higher value will penalize repetitions more strongly.",
@@ -77,30 +72,10 @@
 			"description": "Penalizes new tokens based on their frequency in the text so far.",
 			"range": "0.0-1.0"
 		},
-		"mirostat": {
-			"value": null,
-			"description": "Enables or disables mirostat.",
-			"range": "0=disable, 1=v1, 2=v2"
-		},
-		"mirostat_tau": {
-			"value": null,
-			"description": "Controls the balance between coherence and diversity of the output. A lower value will result in more focused and coherent text.",
-			"range": "0.0-10.0"
-		},
-		"mirostat_eta": {
-			"value": null,
-			"description": "Influences how quickly the algorithm responds to feedback from the generated text.",
-			"range": "0.0-1.0"
-		},
 		"num_keep": {
 			"value": null,
 			"description": "Number of tokens to keep unchanged at the beginning of the generated text.",
 			"range": "Integer value"
-		},
-		"penalize_newline": {
-			"value": true,
-			"description": "Whether to penalize the generation of new lines.",
-			"range": "Boolean value"
 		},
 		"stop": {
 			"value": [],
