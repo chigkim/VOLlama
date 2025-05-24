@@ -3,7 +3,8 @@
 # # v0.3.2
 
 * It displays presets in alphabetical order.
-* When temperature is not set, llama-index-llms-ollama sends none as temperature value to use the default temperature from the model.
+* Removed deplicated parameters for Ollama: penalize_newline, mirostat, mirostat_tau, mirostat_eta, tfs_z
+* When temperature is not set, llama-index-llms-ollama sends none as temperature value in order to use the default temperature set by the model.
 
 ## v0.3.1
 
