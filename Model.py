@@ -243,12 +243,13 @@ class Model:
             content += "\n---\n" + self.document
         message = ChatMessage(role="user", content=content)
         if self.image:
-            image = encode_image(self.image)
             message = ChatMessage(
                 role="user",
                 content=content,
             )
-            message.blocks.append(ImageBlock(image=image))
+            for image in self.image:
+                image = encode_image(image)
+                message.blocks.append(ImageBlock(image=image))
         try:
             if content.startswith("/q ") and self.rag:
                 if not self.rag.index:

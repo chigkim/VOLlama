@@ -1,4 +1,4 @@
-version = 43
+version = 44
 import wx
 import threading
 import sounddevice as sd
@@ -374,14 +374,14 @@ class ChatWindow(wx.Frame):
             self,
             "Choose an image",
             wildcard="Image files (*.jpg;*.jpeg;*.png)|*.jpg;*.jpeg;*.png",
-            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST,
+            style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE,
         ) as dlg:
             if dlg.ShowModal() == wx.ID_CANCEL:
                 return
-            filename = dlg.GetFilename()
+            paths = dlg.GetPaths()
             dirname = dlg.GetDirectory()
-            file = os.path.join(dirname, filename)
-            self.image = file
+            #file = os.path.join(dirname, filename)
+            self.image = paths
             self.prompt.SetFocus()
 
     def onUploadDocument(self, event):

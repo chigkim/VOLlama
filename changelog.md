@@ -1,5 +1,9 @@
 # Change log
 
+# # v0.4.0
+
+* You can now attach multiple images at once.
+
 # # v0.3.2
 
 * It displays presets in alphabetical order.
