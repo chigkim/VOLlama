@@ -29,9 +29,17 @@ def playSD(file):
 def play(file):
     threading.Thread(target=playSD, args=(file,)).start()
 
+
 class ShiftEnterTextCtrl(wx.TextCtrl):
-    def __init__(self, parent, id=wx.ID_ANY, value="",
-                 pos=wx.DefaultPosition, size=wx.DefaultSize, **kwargs):
+    def __init__(
+        self,
+        parent,
+        id=wx.ID_ANY,
+        value="",
+        pos=wx.DefaultPosition,
+        size=wx.DefaultSize,
+        **kwargs,
+    ):
         # Make sure the control is multiline and passes Enter events up
         style = kwargs.pop("style", 0) | wx.TE_MULTILINE | wx.TE_PROCESS_ENTER
         super().__init__(parent, id, value, pos, size, style, **kwargs)
@@ -45,7 +53,8 @@ class ShiftEnterTextCtrl(wx.TextCtrl):
             self.WriteText("\n")
             # Do NOT call event.Skip(); we have fully handled the key
         else:
-            event.Skip()          # Let wx handle everything else
+            event.Skip()  # Let wx handle everything else
+
 
 class ChatWindow(wx.Frame):
     def __init__(self, parent, title):
@@ -172,7 +181,9 @@ class ChatWindow(wx.Frame):
         self.SetupAccelerators()
         panel = wx.Panel(self)
         self.response = wx.TextCtrl(panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
-        self.prompt = ShiftEnterTextCtrl(panel, style=wx.TE_PROCESS_ENTER | wx.TE_MULTILINE)
+        self.prompt = ShiftEnterTextCtrl(
+            panel, style=wx.TE_PROCESS_ENTER | wx.TE_MULTILINE
+        )
         self.prompt.Bind(wx.EVT_TEXT_ENTER, self.OnSend)
 
         pnl = wx.Panel(panel)
@@ -397,7 +408,7 @@ class ChatWindow(wx.Frame):
                 return
             paths = dlg.GetPaths()
             dirname = dlg.GetDirectory()
-            #file = os.path.join(dirname, filename)
+            # file = os.path.join(dirname, filename)
             self.image = paths
             self.prompt.SetFocus()
 

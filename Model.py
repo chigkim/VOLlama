@@ -47,8 +47,8 @@ def encode_image(image_path):
 def is_image_url(url):
     try:
         response = requests.head(url, allow_redirects=True, timeout=5)
-        content_type = response.headers.get('Content-Type', '')
-        return content_type.startswith('image/')
+        content_type = response.headers.get("Content-Type", "")
+        return content_type.startswith("image/")
     except requests.RequestException:
         return False
 
