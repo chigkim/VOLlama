@@ -1,4 +1,4 @@
-version = 44
+version = 45
 import wx
 import threading
 import sounddevice as sd
@@ -29,6 +29,23 @@ def playSD(file):
 def play(file):
     threading.Thread(target=playSD, args=(file,)).start()
 
+class ShiftEnterTextCtrl(wx.TextCtrl):
+    def __init__(self, parent, id=wx.ID_ANY, value="",
+                 pos=wx.DefaultPosition, size=wx.DefaultSize, **kwargs):
+        # Make sure the control is multiline and passes Enter events up
+        style = kwargs.pop("style", 0) | wx.TE_MULTILINE | wx.TE_PROCESS_ENTER
+        super().__init__(parent, id, value, pos, size, style, **kwargs)
+
+        # Low-level key handler
+        self.Bind(wx.EVT_KEY_DOWN, self._on_key_down)
+
+    def _on_key_down(self, event: wx.KeyEvent):
+        if event.GetKeyCode() == wx.WXK_RETURN and event.ShiftDown():
+            # Insert a newline at the caret without triggering EVT_TEXT_ENTER
+            self.WriteText("\n")
+            # Do NOT call event.Skip(); we have fully handled the key
+        else:
+            event.Skip()          # Let wx handle everything else
 
 class ChatWindow(wx.Frame):
     def __init__(self, parent, title):
@@ -66,7 +83,7 @@ class ChatWindow(wx.Frame):
         urlMenu = chatMenu.Append(wx.ID_ANY, "Attach a &URL...\tCTRL+U")
         self.Bind(wx.EVT_MENU, self.onUploadURL, urlMenu)
         self.speakResponse = chatMenu.Append(
-            wx.ID_ANY, "Speak Response with System Voice", kind=wx.ITEM_CHECK
+            wx.ID_ANY, "Read Response with System Voice", kind=wx.ITEM_CHECK
         )
         self.speakResponse.Check(settings.speakResponse)
         self.Bind(wx.EVT_MENU, self.onToggleSpeakResponse, self.speakResponse)
@@ -155,7 +172,7 @@ class ChatWindow(wx.Frame):
         self.SetupAccelerators()
         panel = wx.Panel(self)
         self.response = wx.TextCtrl(panel, style=wx.TE_MULTILINE | wx.TE_READONLY)
-        self.prompt = wx.TextCtrl(panel, style=wx.TE_PROCESS_ENTER | wx.TE_MULTILINE)
+        self.prompt = ShiftEnterTextCtrl(panel, style=wx.TE_PROCESS_ENTER | wx.TE_MULTILINE)
         self.prompt.Bind(wx.EVT_TEXT_ENTER, self.OnSend)
 
         pnl = wx.Panel(panel)
@@ -400,7 +417,7 @@ class ChatWindow(wx.Frame):
 
     def onUploadURL(self, e):
         with wx.TextEntryDialog(
-            self, "Enter an url to retreive::", "URL", value="https://"
+            self, "Enter an url to retrieve:", "URL", value="https://"
         ) as dlg:
             if dlg.ShowModal() == wx.ID_CANCEL:
                 return

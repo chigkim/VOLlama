@@ -28,11 +28,29 @@ from llama_index.readers.web import (
     BeautifulSoupWebReader,
 )
 from llama_index.llms.openai_like import OpenAILike
+import requests
 
 
 def encode_image(image_path):
-    with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode("utf-8")
+    try:
+        if is_image_url(image_path):
+            response = requests.get(image_path)
+            content = response.content
+        else:
+            with open(image_path, "rb") as image_file:
+                content = image_file.read()
+        return base64.b64encode(content).decode("utf-8")
+    except:
+        return None
+
+
+def is_image_url(url):
+    try:
+        response = requests.head(url, allow_redirects=True, timeout=5)
+        content_type = response.headers.get('Content-Type', '')
+        return content_type.startswith('image/')
+    except requests.RequestException:
+        return False
 
 
 class Model:
@@ -238,7 +256,10 @@ class Model:
         if not self.image:
             Settings.callback_manager = CallbackManager([self.token_counter])
         if self.documentURL:
-            self.document = self.getURL(self.documentURL)
+            if is_image_url(self.documentURL):
+                self.image = [self.documentURL]
+            else:
+                self.document = self.getURL(self.documentURL)
         if self.document:
             content += "\n---\n" + self.document
         message = ChatMessage(role="user", content=content)
