@@ -2,6 +2,7 @@ import platform
 import queue
 import wx
 from Settings import settings
+from accessible_output2.outputs.auto import Auto
 
 # macOS specific imports
 if platform.system() == "Darwin":
@@ -22,6 +23,11 @@ class Speech:
         if settings.voice != "unknown":
             self.set_voice(settings.voice)
             self.set_rate(settings.rate)
+        self.screen_reader = None
+        try:
+            self.screen_reader = Auto().get_first_available_output()
+        except:
+            pass
 
     def setup_synth(self):
         if self.os == "Darwin":
@@ -34,7 +40,9 @@ class Speech:
             raise NotImplementedError(f"Platform '{self.os}' not supported")
 
     def speak(self, text):
-        if self.os == "Windows":
+        if self.screen_reader and settings.screenreader:
+            self.screen_reader.speak(text, False)
+        elif self.os == "Windows":
             self.synth.Speak(text, 1)
         elif self.os == "Darwin":
             utterance = AVFoundation.AVSpeechUtterance.speechUtteranceWithString_(text)

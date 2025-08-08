@@ -4,6 +4,7 @@ import os
 import json
 import threading
 from pathlib import Path
+from Utils import displayError
 
 
 def config_dir():
@@ -74,9 +75,7 @@ class SettingsManager:
             return
         self._initialized = True
         self.settings_file_path = config_dir() / "settings.json"
-        self.settings = (
-            self.load_settings()
-        )  # Then attempt to load settings, or initialize with defaults if loading fails.
+        self.settings = self.load_settings()
 
     def save_settings(self):
         settings_dict = self.settings.to_dict()
@@ -94,9 +93,15 @@ class SettingsManager:
                 settings_dict = json.load(file)
         except FileNotFoundError:
             settings_dict = default_dict
-
+        if (
+            "version" not in settings_dict
+            or settings_dict["version"] != default_dict["version"]
+        ):
+            settings_dict["version"] = 0
         # Ensure all default settings are present, add missing ones
         for key, value in default_dict.items():
+            if key == "version":
+                continue
             if key not in settings_dict:
                 settings_dict[key] = value
         if "secret" not in settings_dict:

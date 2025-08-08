@@ -1,3 +1,4 @@
+accessible_output2
 ollama==0.5.3
 pyinstaller
 sounddevice

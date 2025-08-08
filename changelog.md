@@ -1,5 +1,10 @@
 # Change log
 
+## v0.6.0
+
+*  Ability to toggle to read with screen reader in chat menu.
+* Reset settings in advance.
+
 ## v0.5.0
 
 * Upgraded dependencies to support GPT-5

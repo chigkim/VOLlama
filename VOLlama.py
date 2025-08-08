@@ -46,6 +46,10 @@ class ShiftEnterTextCtrl(wx.TextCtrl):
 
         # Low-level key handler
         self.Bind(wx.EVT_KEY_DOWN, self._on_key_down)
+        if settings.version == 0:
+            displayError(
+                "Your settings are not compatible with this version. Please choose reset settings in the advance menu and restart the app."
+            )
 
     def _on_key_down(self, event: wx.KeyEvent):
         if event.GetKeyCode() == wx.WXK_RETURN and event.ShiftDown():
@@ -92,11 +96,16 @@ class ChatWindow(wx.Frame):
         urlMenu = chatMenu.Append(wx.ID_ANY, "Attach a &URL...\tCTRL+U")
         self.Bind(wx.EVT_MENU, self.onUploadURL, urlMenu)
         self.speakResponse = chatMenu.Append(
-            wx.ID_ANY, "Read Response with System Voice", kind=wx.ITEM_CHECK
+            wx.ID_ANY, "Read Response", kind=wx.ITEM_CHECK
         )
         self.speakResponse.Check(settings.speakResponse)
         self.Bind(wx.EVT_MENU, self.onToggleSpeakResponse, self.speakResponse)
-        self.configSpeech = chatMenu.Append(wx.ID_ANY, "Configure Voice...")
+        self.useScreenReader = chatMenu.Append(
+            wx.ID_ANY, "Use Screen Reader", kind=wx.ITEM_CHECK
+        )
+        self.useScreenReader.Check(settings.screenreader)
+        self.Bind(wx.EVT_MENU, self.onToggleUseScreenReader, self.useScreenReader)
+        self.configSpeech = chatMenu.Append(wx.ID_ANY, "Configure System Voice...")
         self.Bind(wx.EVT_MENU, self.speech.present_voice_rate_dialog, self.configSpeech)
         self.modelsMenu = chatMenu.Append(wx.ID_ANY, "&Models\tCTRL+l")
         self.Bind(wx.EVT_MENU, self.FocusOnModelList, self.modelsMenu)
@@ -136,6 +145,8 @@ class ChatWindow(wx.Frame):
         self.deleteModelMenu.Enable(settings.llm_name == "Ollama")
         # logMenu = advanceMenu.Append(wx.ID_ANY, "Log\tCTRL+ALT+L")
         # self.Bind(wx.EVT_MENU, self.log, logMenu)
+        resetMenu = advanceMenu.Append(wx.ID_ANY, "Reset Settings")
+        self.Bind(wx.EVT_MENU, self.OnResetSettings, resetMenu)
 
         ragMenu = wx.Menu()
         indexUrlMenu = ragMenu.Append(wx.ID_ANY, "Index &URL...")
@@ -251,6 +262,9 @@ class ChatWindow(wx.Frame):
     def onToggleSpeakResponse(self, e):
         settings.speakResponse = self.speakResponse.IsChecked()
 
+    def onToggleUseScreenReader(self, e):
+        settings.screenreader = self.useScreenReader.IsChecked()
+
     def setSystem(self, event):
         dlg = PromptDialog(self, prompt=settings.system)
         if dlg.ShowModal() == wx.ID_OK:
@@ -287,6 +301,19 @@ class ChatWindow(wx.Frame):
             if dlg.ShowModal() == wx.ID_YES:
                 self.model.delete()
                 self.refreshModels()
+
+    def OnResetSettings(self, event):
+        with wx.MessageDialog(
+            self,
+            f"Are you sure you want to reset your settings?",
+            "Reset",
+            wx.YES_NO | wx.ICON_QUESTION,
+        ) as dlg:
+            dlg.SetYesNoLabels("Yes", "No")
+            if dlg.ShowModal() == wx.ID_YES:
+                settings_file_path = config_dir() / "settings.json"
+                if settings_file_path.exists():
+                    settings_file_path.unlink()
 
     def OnNewChat(self, event):
         self.FocusOnPrompt()
