@@ -2,7 +2,8 @@
 
 ## v0.5.0
 
-* You can specify a direct URL to an image when using the **attach URL** feature.
+* Upgraded dependencies to support GPT-5
+* You can specify a direct URL to an image when using the attach URL feature.
 * The prompt field now accepts both Shift+Enter and Ctrl+Enter for a new line.
 * Changed "Speak response" to "Read response" in the chat menu, so it now uses "R" as the accelerator on Windows.
 * Typo fix
