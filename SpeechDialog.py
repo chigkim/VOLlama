@@ -17,18 +17,26 @@ class SpeechDialog(wx.Dialog):
         # Voice selection row
         voice_row = wx.BoxSizer(wx.HORIZONTAL)
         # The button now shows the selected voice (or a placeholder if none)
-        self.voice_btn = wx.Button(panel, label=(self._selected_voice or "Choose Voice…"))
+        self.voice_btn = wx.Button(
+            panel, label=(self._selected_voice or "Choose Voice…")
+        )
         self.voice_btn.Bind(wx.EVT_BUTTON, self._on_open_menu)
 
-        voice_row.Add(wx.StaticText(panel, label="Voice"),
-                      flag=wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, border=8)
+        voice_row.Add(
+            wx.StaticText(panel, label="Voice"),
+            flag=wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
+            border=8,
+        )
         voice_row.Add(self.voice_btn, proportion=1, flag=wx.EXPAND)
 
         # Rate row
         rate_row = wx.BoxSizer(wx.HORIZONTAL)
         self.rate_text_ctrl = wx.TextCtrl(panel, value=str(rate))
-        rate_row.Add(wx.StaticText(panel, label="Rate"),
-                     flag=wx.ALIGN_CENTER_VERTICAL | wx.RIGHT, border=8)
+        rate_row.Add(
+            wx.StaticText(panel, label="Rate"),
+            flag=wx.ALIGN_CENTER_VERTICAL | wx.RIGHT,
+            border=8,
+        )
         rate_row.Add(self.rate_text_ctrl, proportion=1)
 
         # Buttons
@@ -113,7 +121,10 @@ class SpeechDialog(wx.Dialog):
         for k in keys:
             child = node[k]
             # Leaf-only child: add a selectable item
-            if "__leaf__" in child and len([x for x in child.keys() if x != "__leaf__"]) == 0:
+            if (
+                "__leaf__" in child
+                and len([x for x in child.keys() if x != "__leaf__"]) == 0
+            ):
                 voice = child["__leaf__"]
                 item_id = wx.NewIdRef()
                 item = menu.Append(item_id, k)

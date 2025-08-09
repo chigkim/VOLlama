@@ -1,4 +1,4 @@
-version = 46
+version = 47
 import wx
 import threading
 import sounddevice as sd
@@ -63,12 +63,9 @@ class ShiftEnterTextCtrl(wx.TextCtrl):
 class ChatWindow(wx.Frame):
     def __init__(self, parent, title):
         super(ChatWindow, self).__init__(parent, title=title, size=(1920, 1080))
-        if platform.system() == "Darwin":
-            from Speech_NSSpeechSynthesizer import Speech # Speech_AVSpeechSynthesizer
-        elif platform.system() == "Windows":
-            from Speech_SAPI import Speech
-        self.speech = Speech()
-        self.speech.speak("VOLlama is starting...")
+        self.init_speech()
+        if settings.speakResponse:
+            self.speech.speak("VOLlama is starting...")
         self.InitUI()
         self.Maximize(True)
         self.Centre()
@@ -83,6 +80,15 @@ class ChatWindow(wx.Frame):
         self.document = None
         self.documentURL = None
         threading.Thread(target=check_update, args=(version,)).start()
+
+    def init_speech(self):
+        if settings.screenreader:
+            from Speech_Screen_Reader import Speech
+        elif platform.system() == "Darwin":
+            from Speech_NSSpeechSynthesizer import Speech  # Speech_AVSpeechSynthesizer
+        elif platform.system() == "Windows":
+            from Speech_SAPI import Speech
+        self.speech = Speech()
 
     def InitUI(self):
         # self.CreateStatusBar()
@@ -104,12 +110,15 @@ class ChatWindow(wx.Frame):
         )
         self.speakResponse.Check(settings.speakResponse)
         self.Bind(wx.EVT_MENU, self.onToggleSpeakResponse, self.speakResponse)
-        self.useScreenReader = chatMenu.Append(
-            wx.ID_ANY, "Use Screen Reader", kind=wx.ITEM_CHECK
+        if platform.system() == "Windows":
+            self.useScreenReader = chatMenu.Append(
+                wx.ID_ANY, "Use Screen Reader", kind=wx.ITEM_CHECK
+            )
+            self.useScreenReader.Check(settings.screenreader)
+            self.Bind(wx.EVT_MENU, self.onToggleUseScreenReader, self.useScreenReader)
+        self.configSpeech = chatMenu.Append(
+            wx.ID_ANY, "Configure System Voice...\tCTRL+SHIFT+V"
         )
-        self.useScreenReader.Check(settings.screenreader)
-        self.Bind(wx.EVT_MENU, self.onToggleUseScreenReader, self.useScreenReader)
-        self.configSpeech = chatMenu.Append(wx.ID_ANY, "Configure System Voice...\tCTRL+SHIFT+V")
         self.Bind(wx.EVT_MENU, self.speech.present_voice_rate_dialog, self.configSpeech)
         self.modelsMenu = chatMenu.Append(wx.ID_ANY, "&Models\tCTRL+l")
         self.Bind(wx.EVT_MENU, self.FocusOnModelList, self.modelsMenu)
@@ -268,6 +277,7 @@ class ChatWindow(wx.Frame):
 
     def onToggleUseScreenReader(self, e):
         settings.screenreader = self.useScreenReader.IsChecked()
+        self.init_speech()
 
     def setSystem(self, event):
         dlg = PromptDialog(self, prompt=settings.system)

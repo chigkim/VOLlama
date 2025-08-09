@@ -7,6 +7,7 @@ from Foundation import NSObject
 import AppKit
 import objc
 
+
 class _SynthDelegate(NSObject):
 
     def initWithOwner_(self, owner):
@@ -23,8 +24,6 @@ class _SynthDelegate(NSObject):
         owner = self._owner_ref() if hasattr(self, "_owner_ref") else None
         if owner is not None:
             owner._start_next_speech()
-
-
 
 
 class Speech:
@@ -114,7 +113,11 @@ class Speech:
         voices = self.get_voices()
 
         def _short(v: str) -> str:
-            return v.replace(self._VOICE_PREFIX, "").replace("com.apple.", "").replace("voice.", "")
+            return (
+                v.replace(self._VOICE_PREFIX, "")
+                .replace("com.apple.", "")
+                .replace("voice.", "")
+            )
 
         short_voices = [_short(v) for v in voices]
 
