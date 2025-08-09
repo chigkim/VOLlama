@@ -4,6 +4,7 @@ import AVFoundation
 from SpeechDialog import SpeechDialog
 import wx
 
+
 class Speech:
     def __init__(self):
         self.queue = queue.Queue()

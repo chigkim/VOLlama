@@ -3,6 +3,7 @@ import win32com.client
 from SpeechDialog import SpeechDialog
 import wx
 
+
 class Speech:
     def __init__(self):
         self.synth = self.setup_synth()
