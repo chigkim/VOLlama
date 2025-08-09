@@ -86,6 +86,7 @@ class Speech:
     def set_voice(self, voice_identifier: str):
         if "default" in voice_identifier:
             settings.voice = voice_identifier
+            self.voice = voice_identifier
             self.synth = self._setup_synth()
             return
         voices = set(AppKit.NSSpeechSynthesizer.availableVoices())
