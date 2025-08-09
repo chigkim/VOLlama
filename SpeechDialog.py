@@ -6,7 +6,7 @@ class SpeechDialog(wx.Dialog):
 
     def __init__(self, parent, title, voices, current_voice, rate):
         super(SpeechDialog, self).__init__(parent, title=title, size=(360, 220))
-        self.voices = list(voices)  # expected short, dot-separated names
+        self.voices = list(["default"]+voices)  # expected short, dot-separated names
         self._menu_item_to_voice = {}  # int(id) -> full voice string
         self._selected_voice = current_voice if current_voice in self.voices else ""
         self._menu_root = None

@@ -10,7 +10,7 @@
 	"system": "",
 	"screenreader": false,
 	"speakResponse": false,
-	"voice": "unknown",
+	"voice": "default",
 	"rate": 0.0,
 	"chunk_size":1024,
 	"chunk_overlap":20,

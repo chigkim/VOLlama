@@ -37,7 +37,7 @@ class Speech:
         # Initialize voice and rate from Settings (with sensible defaults)
         self.voice = (
             settings.voice
-            if getattr(settings, "voice", "unknown") != "unknown"
+            if getattr(settings, "voice", "default") != "default"
             else self.synth.voice()
         )
         self.rate = float(getattr(settings, "rate", 175))
@@ -84,6 +84,10 @@ class Speech:
         return current or self.voice
 
     def set_voice(self, voice_identifier: str):
+        if "default" in voice_identifier:
+            settings.voice = voice_identifier
+            self.synth = self._setup_synth()
+            return
         voices = set(AppKit.NSSpeechSynthesizer.availableVoices())
         if voice_identifier not in voices:
             short = voice_identifier
@@ -135,7 +139,6 @@ class Speech:
         try:
             if dialog.ShowModal() == wx.ID_OK:
                 selected_voice_short, selected_rate = dialog.get_selections()
-
                 candidate = self._VOICE_PREFIX + selected_voice_short
                 if candidate not in voices:
                     candidate_alt = "com.apple." + selected_voice_short
@@ -143,7 +146,6 @@ class Speech:
                         candidate = candidate_alt
 
                 self.set_voice(candidate)
-                print(candidate)
                 try:
                     self.set_rate(float(selected_rate))
                 except Exception:

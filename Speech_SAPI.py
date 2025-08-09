@@ -9,7 +9,7 @@ class Speech:
         self.synth = self.setup_synth()
         self.voice = settings.voice
         self.rate = 0.6
-        if settings.voice != "unknown":
+        if settings.voice != "default":
             self.set_voice(settings.voice)
             self.set_rate(settings.rate)
 
@@ -30,10 +30,13 @@ class Speech:
 
     def set_voice(self, voice_identifier):
         settings.voice = voice_identifier
+        if "default" in voice_identifier:
+                self.synth = self.setup_synth()
+                return
         for voice in self.synth.GetVoices():
             if voice.GetDescription() == voice_identifier:
                 self.synth.Voice = voice
-                break
+                return
 
     def get_rate(self):
         return self.synth.Rate
