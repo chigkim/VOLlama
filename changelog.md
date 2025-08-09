@@ -6,6 +6,7 @@
 * Changed to NSSpeechSynthesizer for Mac
 * Reset settings in advance.
 * Warns to reset the settings not compatible with the current version.
+* Only trigger startup speech when read response is checked.
 
 ## v0.5.0
 

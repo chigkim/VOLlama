@@ -12,12 +12,7 @@ Download and install [Ollama](https://ollama.ai/).
 
 You will need a model to generate text. Execute the command below in terminal (or command-line on Windows) to download a model. If you prefer to use a [different model](https://ollama.ai/library), replace `llama3` with your chosen model.
 ```
-ollama pull llama3.1
-```
-
-Optionally, If you want to utilize the image description feature, you need to download a multimodal (vision+language) model.
-```
-ollama pull llama3.2-vision
+ollama pull gemma3:4b-it-qat
 ```
 
 Optionally, If you want to utilize the retrieval-augmented generation feature, you need to download `nomic-embed-text` for embedding.
@@ -39,8 +34,10 @@ If you are operating Ollama on a different machine, configure the host address i
 
 Shortcuts for all the features can be found in the menu bar. Here are exceptions:
 
-* Control(or Command)+Enter: Insert a new line.
-* Esc: Shift focus to the prompt.
+* Shift+Enter: Insert a new line.
+* Alt(Option on Mac)+up/down: review/edit previous/next message
+* Escape can be used to Stop, focus to the prompt, and exit the edit mode.
+
 
 ## Image Description
 
@@ -63,16 +60,11 @@ This table lists the generation parameters available in VOLlama, along with thei
 | top_p | Works with top_k to manage diversity of responses. Higher values lead to more diversity. Range: 0.0-1.0. | float | 0.95 |
 | min_p | The parameter p represents the minimum probability for a token to be considered, relative to the probability of the most likely token. Range: 0.0-1.0. | float | 0.05 |
 | typical_p | Sets a minimum likelihood threshold for considering a token. Range: 0.0-1.0. | float | 1.0 |
-| tfs_z | Tail free sampling reduces the impact of less probable tokens. Higher values diminish this impact. | float | 1.0 |
 | repeat_penalty | Penalizes repetitions. Higher values increase the penalty. Range: 0.0-2.0. | float | 1.0 |
 | repeat_last_n | How far back the model checks to prevent repetition. 0 = disabled, -1 = num_ctx. | int | 64 |
 | presence_penalty | Penalizes new tokens based on their presence so far. Range: 0.0-1.0. | float | 0.0 |
 | frequency_penalty | Penalizes new tokens based on their frequency so far. Range: 0.0-1.0. | float | 0.0 |
-| mirostat | Enables Mirostat sampling to control perplexity. 0 = disabled, 1 = Mirostat, 2 = Mirostat 2.0. | int | 0 |
-| mirostat_tau | Balances between coherence and diversity of output. Lower values yield more coherence. Range: 0.0-10.0. | float | 5.0 |
-| mirostat_eta | Influences response speed to feedback in text generation. Higher rates mean quicker adjustments. Range: 0.0-1.0. | float | 0.1 |
 | num_keep | Number of tokens to keep unchanged at the beginning of generated text. | int | 0 |
-| penalize_newline | Whether to penalize the generation of new lines. | bool | True |
 | stop | Triggers the model to stop generating text when this pattern is encountered. List strings separated by ", ". | string Array | empty |
 | seed | Sets the random number seed for generation. Specific numbers ensure reproducibility. -1 = random. | int | -1 |
 
@@ -158,7 +150,6 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 build-pyinstaller
-git apply lib-win.patch
 build
 ```
 
@@ -170,6 +161,5 @@ Make sure to use Python 3.12.
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-git apply lib-mac.patch
 ./build.sh
 ```
