@@ -3,6 +3,7 @@
 ## v0.6.0
 
 *  Windows only: Ability to toggle to read with screen reader in chat menu.
+* Changed to NSSpeechSynthesizer for Mac
 * Reset settings in advance.
 * Warns to reset the settings not compatible with the current version.
 
