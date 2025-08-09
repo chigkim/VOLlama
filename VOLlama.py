@@ -9,7 +9,7 @@ from Settings import settings, config_dir
 from CopyDialog import CopyDialog
 import codecs
 import json
-from Speech import Speech
+import platform
 from Update import check_update
 from Parameters import ParametersDialog
 from RAGParameterDialog import RAGParameterDialog
@@ -63,6 +63,10 @@ class ShiftEnterTextCtrl(wx.TextCtrl):
 class ChatWindow(wx.Frame):
     def __init__(self, parent, title):
         super(ChatWindow, self).__init__(parent, title=title, size=(1920, 1080))
+        if platform.system() == "Darwin":
+            from Speech_AVSpeechSynthesizer import Speech
+        elif platform.system() == "Windows":
+            from Speech_SAPI import Speech
         self.speech = Speech()
         self.speech.speak("VOLlama is starting...")
         self.InitUI()
