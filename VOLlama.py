@@ -64,7 +64,7 @@ class ChatWindow(wx.Frame):
     def __init__(self, parent, title):
         super(ChatWindow, self).__init__(parent, title=title, size=(1920, 1080))
         if platform.system() == "Darwin":
-            from Speech_AVSpeechSynthesizer import Speech
+            from Speech_NSSpeechSynthesizer import Speech # Speech_AVSpeechSynthesizer
         elif platform.system() == "Windows":
             from Speech_SAPI import Speech
         self.speech = Speech()
@@ -109,7 +109,7 @@ class ChatWindow(wx.Frame):
         )
         self.useScreenReader.Check(settings.screenreader)
         self.Bind(wx.EVT_MENU, self.onToggleUseScreenReader, self.useScreenReader)
-        self.configSpeech = chatMenu.Append(wx.ID_ANY, "Configure System Voice...")
+        self.configSpeech = chatMenu.Append(wx.ID_ANY, "Configure System Voice...\tCTRL+SHIFT+V")
         self.Bind(wx.EVT_MENU, self.speech.present_voice_rate_dialog, self.configSpeech)
         self.modelsMenu = chatMenu.Append(wx.ID_ANY, "&Models\tCTRL+l")
         self.Bind(wx.EVT_MENU, self.FocusOnModelList, self.modelsMenu)
