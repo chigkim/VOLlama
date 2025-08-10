@@ -1,5 +1,10 @@
 # Change log
 
+## v0.7.0
+
+* Display friendlier dialog when unable to retrieve model list and display API settings dialog.
+* Display API Settings dialog when model is not set.
+
 ## v0.6.0
 
 *  Windows only: Added option to toggle screen reader in the chat menu.

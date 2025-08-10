@@ -327,11 +327,12 @@ class ChatWindow(wx.Frame):
             "Reset",
             wx.YES_NO | wx.ICON_QUESTION,
         ) as dlg:
-            dlg.SetYesNoLabels("Yes", "No")
+            dlg.SetYesNoLabels("Reset and Quit", "Cancel")
             if dlg.ShowModal() == wx.ID_YES:
                 settings_file_path = config_dir() / "settings.json"
                 if settings_file_path.exists():
                     settings_file_path.unlink()
+                    self.OnExit(None)
 
     def OnNewChat(self, event):
         self.FocusOnPrompt()
