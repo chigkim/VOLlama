@@ -256,13 +256,14 @@ class ChatWindow(wx.Frame):
 
     def refreshModels(self):
         self.modelList.SetItems([])
-        threading.Thread(target=self.getModels).start()
+        threading.Thread(target=self.getModels, daemon=True).start()
 
     def getModels(self):
         try:
             models = self.model.get_models()
         except Exception as e:
-            displayError(e)
+            displayError("Unable to retrieve model list. Please verify your API settings and network connection.")
+            wx.CallAfter(self.displayAPISettingsDialog, None)
             return
         self.modelList.SetItems(models)
         if settings.model_name in models:
