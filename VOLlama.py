@@ -74,12 +74,15 @@ class ChatWindow(wx.Frame):
         self.model = Model()
         self.model.setSystem(settings.system)
         self.historyIndex = len(self.model.messages)
-        self.refreshModels()
         self.prompt.SetFocus()
         self.image = None
         self.document = None
         self.documentURL = None
         threading.Thread(target=check_update, args=(version,)).start()
+        if settings.model_name:
+            self.refreshModels()
+        else:
+            self.displayAPISettingsDialog(None)
 
     def init_speech(self):
         if settings.screenreader:
