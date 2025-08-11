@@ -1,18 +1,18 @@
+wxpython
 accessible_output2
-ollama==0.5.3
 pyinstaller
 sounddevice
 soundfile
-wxpython
 appdirs
 PyWin32; sys_platform == 'win32'
 PyObjC; sys_platform == 'darwin'
-llama-index-core==0.13.0
-llama-index-embeddings-ollama==0.7.0
-llama-index-llms-ollama==0.7.0
-llama-index-llms-gemini==0.6.0
-llama-index-llms-openai==0.5.2
-llama-index-llms-openai-like==0.5.0
+ollama
+llama-index-core
+llama-index-embeddings-ollama
+llama-index-llms-ollama
+llama-index-llms-gemini
+llama-index-llms-openai
+llama-index-llms-openai-like
 #llama-index-multi-modal-llms-openai
 #llama-index-multi-modal-llms-ollama
 #llama-index-multi-modal-llms-gemini
@@ -23,4 +23,4 @@ cryptography
 MainContentExtractor
 EbookLib
 html2text
-transformers==4.55.0
+transformers
