@@ -1,4 +1,4 @@
-version = 47
+version = 48
 import wx
 import threading
 import sounddevice as sd
@@ -21,9 +21,10 @@ import functools
 
 
 def playSD(file):
-    p = os.path.join(os.path.dirname(__file__), file)
-    data, fs = sf.read(p, dtype="float32")
-    sd.play(data, fs)
+    if settings.sound:
+        p = os.path.join(os.path.dirname(__file__), file)
+        data, fs = sf.read(p, dtype="float32")
+        sd.play(data, fs)
 
 
 def play(file):
@@ -91,6 +92,9 @@ class ChatWindow(wx.Frame):
             from Speech_NSSpeechSynthesizer import Speech  # Speech_AVSpeechSynthesizer
         elif platform.system() == "Windows":
             from Speech_SAPI import Speech
+        else:
+            from Speech_Silence import Speech
+
         self.speech = Speech()
 
     def InitUI(self):
@@ -113,6 +117,12 @@ class ChatWindow(wx.Frame):
         )
         self.speakResponse.Check(settings.speakResponse)
         self.Bind(wx.EVT_MENU, self.onToggleSpeakResponse, self.speakResponse)
+        self.playSound = chatMenu.Append(
+            wx.ID_ANY, "Play Sound", kind=wx.ITEM_CHECK
+        )
+        self.playSound.Check(settings.sound)
+        self.Bind(wx.EVT_MENU, self.onTogglePlaySound, self.playSound)
+
         if platform.system() == "Windows":
             self.useScreenReader = chatMenu.Append(
                 wx.ID_ANY, "Use Screen Reader", kind=wx.ITEM_CHECK
@@ -275,6 +285,10 @@ class ChatWindow(wx.Frame):
             self.modelList.SetSelection(0)
         self.onSelectModel()
         self.modelList.SetFocus()
+
+    def onTogglePlaySound(self, e):
+        settings.sound = self.playSound.IsChecked()
+
 
     def onToggleSpeakResponse(self, e):
         settings.speakResponse = self.speakResponse.IsChecked()

@@ -1,98 +1,99 @@
 {
-	"version":1,
-	"ollama_base_url": "http://localhost:11434",
-	"llm_name": "Ollama",
-	"model_name": "",
-	"openai_api_key": "YOUR_API_KEY",
-	"openailike_base_url": "http://localhost:8080/v1/",
-	"openailike_api_key": "YOUR_API_KEY",
-	"gemini_api_key": "YOUR_API_KEY",
-	"system": "",
-	"screenreader": false,
-	"speakResponse": false,
-	"voice": "default",
-	"rate": 0.0,
-	"chunk_size":1024,
-	"chunk_overlap":20,
-	"similarity_top_k":2,
-	"similarity_cutoff":0.0,
-	"response_mode": "compact",
-	"show_context": false,
-	"parameters": {
-		"num_ctx": {
-			"value": 8192,
-			"description": "Sets the size of the context window used to generate the next token.",
-			"range": "The max context length depends on the model."
-		},
-		"num_predict": {
-			"value": null,
-			"description": "Maximum number of tokens to predict when generating text.",
-			"range": "-1 = infinity, -2 = until context filled"
-		},
-		"temperature": {
-			"value": null,
-			"description": "Increasing the temperature will make the model answer more creatively.",
-			"range": "0.0-2.0"
-		},
-		"top_k": {
-			"value": null,
-			"description": "Reduces the probability of generating nonsense.",
-			"range": "-1-100"
-		},
-		"top_p": {
-			"value": null,
-			"description": "Works together with top-k. A higher value will lead to more diverse text, while a lower value will generate more focused and conservative text.",
-			"range": "0.0-1.0"
-		},
-		"min_p": {
-			"value": null,
-			"description": "Alternative to the top_p: The parameter p represents the minimum probability for a token to be considered, relative to the probability of the most likely token.",
-			"range": "0.0-1.0"
-		},
-		"typical_p": {
-			"value": null,
-			"description": "Reduces the impact of less probable tokens from the output.",
-			"range": "0.0-1.0"
-		},
-		"repeat_penalty": {
-			"value": null,
-			"description": "Higher value will penalize repetitions more strongly.",
-			"range": "0.0-2.0"
-		},
-		"repeat_last_n": {
-			"value": null,
-			"description": "Sets how far back for the model to look back to prevent repetition.",
-			"range": "0=disabled, -1=num_ctx"
-		},
-		"presence_penalty": {
-			"value": null,
-			"description": "Penalizes new tokens based on their presence in the text so far.",
-			"range": "0.0-1.0"
-		},
-		"frequency_penalty": {
-			"value": null,
-			"description": "Penalizes new tokens based on their frequency in the text so far.",
-			"range": "0.0-1.0"
-		},
-		"num_keep": {
-			"value": null,
-			"description": "Number of tokens to keep unchanged at the beginning of the generated text.",
-			"range": "Integer value"
-		},
-		"stop": {
-			"value": [],
-			"description": "When this pattern is encountered the LLM will stop generating text and return.",
-			"range": "Array of strings"
-		},
-		"seed": {
-			"value": null,
-			"description": "Sets the random number seed to use for generation. Setting this to a specific number will make the model generate the same text for the same prompt.",
-			"range": "Integer value"
-		},
-		"num_gpu": {
-			"value": null,
-			"description": "Sets the number of layers to load to GPU.",
-			"range": "Integer value"
-		}
-	}
+    "version":1,
+    "ollama_base_url": "http://localhost:11434",
+    "llm_name": "Ollama",
+    "model_name": "",
+    "openai_api_key": "YOUR_API_KEY",
+    "openailike_base_url": "http://localhost:8080/v1/",
+    "openailike_api_key": "YOUR_API_KEY",
+    "gemini_api_key": "YOUR_API_KEY",
+    "system": "",
+    "sound": true,
+    "screenreader": false,
+    "speakResponse": false,
+    "voice": "default",
+    "rate": 0.0,
+    "chunk_size":1024,
+    "chunk_overlap":20,
+    "similarity_top_k":2,
+    "similarity_cutoff":0.0,
+    "response_mode": "compact",
+    "show_context": false,
+    "parameters": {
+        "num_ctx": {
+            "value": 8192,
+            "description": "Sets the size of the context window used to generate the next token.",
+            "range": "The max context length depends on the model."
+        },
+        "num_predict": {
+            "value": null,
+            "description": "Maximum number of tokens to predict when generating text.",
+            "range": "-1 = infinity, -2 = until context filled"
+        },
+        "temperature": {
+            "value": null,
+            "description": "Increasing the temperature will make the model answer more creatively.",
+            "range": "0.0-2.0"
+        },
+        "top_k": {
+            "value": null,
+            "description": "Reduces the probability of generating nonsense.",
+            "range": "-1-100"
+        },
+        "top_p": {
+            "value": null,
+            "description": "Works together with top-k. A higher value will lead to more diverse text, while a lower value will generate more focused and conservative text.",
+            "range": "0.0-1.0"
+        },
+        "min_p": {
+            "value": null,
+            "description": "Alternative to the top_p: The parameter p represents the minimum probability for a token to be considered, relative to the probability of the most likely token.",
+            "range": "0.0-1.0"
+        },
+        "typical_p": {
+            "value": null,
+            "description": "Reduces the impact of less probable tokens from the output.",
+            "range": "0.0-1.0"
+        },
+        "repeat_penalty": {
+            "value": null,
+            "description": "Higher value will penalize repetitions more strongly.",
+            "range": "0.0-2.0"
+        },
+        "repeat_last_n": {
+            "value": null,
+            "description": "Sets how far back for the model to look back to prevent repetition.",
+            "range": "0=disabled, -1=num_ctx"
+        },
+        "presence_penalty": {
+            "value": null,
+            "description": "Penalizes new tokens based on their presence in the text so far.",
+            "range": "0.0-1.0"
+        },
+        "frequency_penalty": {
+            "value": null,
+            "description": "Penalizes new tokens based on their frequency in the text so far.",
+            "range": "0.0-1.0"
+        },
+        "num_keep": {
+            "value": null,
+            "description": "Number of tokens to keep unchanged at the beginning of the generated text.",
+            "range": "Integer value"
+        },
+        "stop": {
+            "value": [],
+            "description": "When this pattern is encountered the LLM will stop generating text and return.",
+            "range": "Array of strings"
+        },
+        "seed": {
+            "value": null,
+            "description": "Sets the random number seed to use for generation. Setting this to a specific number will make the model generate the same text for the same prompt.",
+            "range": "Integer value"
+        },
+        "num_gpu": {
+            "value": null,
+            "description": "Sets the number of layers to load to GPU.",
+            "range": "Integer value"
+        }
+    }
 }
