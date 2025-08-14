@@ -27,7 +27,7 @@ class Speech:
         return self.rate
 
     def set_rate(self, rate):
-        self=rate = rate
+        self = rate = rate
 
     def present_voice_rate_dialog(self, e=None):
         voices = self.get_voices()

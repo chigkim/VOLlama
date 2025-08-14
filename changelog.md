@@ -4,7 +4,7 @@
 
 * Display friendlier dialog when unable to retrieve model list and display API settings dialog.
 * Display API Settings dialog when model is not set.
-* Resets setting quits the app.
+* Resets the setting quits the app.
 * Toggle to play sound
 
 ## v0.6.0

@@ -117,9 +117,7 @@ class ChatWindow(wx.Frame):
         )
         self.speakResponse.Check(settings.speakResponse)
         self.Bind(wx.EVT_MENU, self.onToggleSpeakResponse, self.speakResponse)
-        self.playSound = chatMenu.Append(
-            wx.ID_ANY, "Play Sound", kind=wx.ITEM_CHECK
-        )
+        self.playSound = chatMenu.Append(wx.ID_ANY, "Play Sound", kind=wx.ITEM_CHECK)
         self.playSound.Check(settings.sound)
         self.Bind(wx.EVT_MENU, self.onTogglePlaySound, self.playSound)
 
@@ -275,7 +273,9 @@ class ChatWindow(wx.Frame):
         try:
             models = self.model.get_models()
         except Exception as e:
-            displayError("Unable to retrieve model list. Please verify your API settings and network connection.")
+            displayError(
+                "Unable to retrieve model list. Please verify your API settings and network connection."
+            )
             wx.CallAfter(self.displayAPISettingsDialog, None)
             return
         self.modelList.SetItems(models)
@@ -288,7 +288,6 @@ class ChatWindow(wx.Frame):
 
     def onTogglePlaySound(self, e):
         settings.sound = self.playSound.IsChecked()
-
 
     def onToggleSpeakResponse(self, e):
         settings.speakResponse = self.speakResponse.IsChecked()

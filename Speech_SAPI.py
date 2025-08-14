@@ -31,8 +31,8 @@ class Speech:
     def set_voice(self, voice_identifier):
         settings.voice = voice_identifier
         if "default" in voice_identifier:
-                self.synth = self.setup_synth()
-                return
+            self.synth = self.setup_synth()
+            return
         for voice in self.synth.GetVoices():
             if voice.GetDescription() == voice_identifier:
                 self.synth.Voice = voice
