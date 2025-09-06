@@ -2,10 +2,11 @@
 
 ## v0.7.0
 
-* Display friendlier dialog when unable to retrieve model list and display API settings dialog.
-* Display API Settings dialog when model is not set.
-* Resets the setting quits the app.
-* Toggle to play sound
+* Now you can specify embedding model in rag settings.
+* You can now mute the sound effect.
+* Display the dialog for API Settings when launching for the first time.
+* Display friendlier message when unable to retrieve model list and display API settings dialog.
+* Resetting the setting quits the app.
 
 ## v0.6.0
 

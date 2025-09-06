@@ -3,6 +3,7 @@
     "ollama_base_url": "http://localhost:11434",
     "llm_name": "Ollama",
     "model_name": "",
+    "embedding_model": "EmbeddingGemma",
     "openai_api_key": "YOUR_API_KEY",
     "openailike_base_url": "http://localhost:8080/v1/",
     "openailike_api_key": "YOUR_API_KEY",

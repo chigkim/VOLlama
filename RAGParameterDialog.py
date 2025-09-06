@@ -4,7 +4,7 @@ import wx
 
 class RAGParameterDialog(wx.Dialog):
     def __init__(self, parent, title):
-        super().__init__(parent, title=title, size=(400, 400))
+        super().__init__(parent, title=title, size=(400, 420))
 
         self.panel = wx.Panel(self)
         self.grid_sizer = wx.GridBagSizer(
@@ -66,6 +66,12 @@ class RAGParameterDialog(wx.Dialog):
                 "initial": settings.show_context,
                 "tooltip": "Toggle to show or hide additional context related to your query.",
             },
+            "embedding_model": {
+                "label": "Embedding Model",
+                "control": "TextCtrl",
+                "initial": getattr(settings, "embedding_model", ""),
+                "tooltip": "Name of the embedding model to use.",
+            },
         }
 
         self.controls = {}
@@ -99,6 +105,8 @@ class RAGParameterDialog(wx.Dialog):
         elif control == "CheckBox":
             widget = wx.CheckBox(self.panel)
             widget.SetValue(kwargs["initial"])
+        elif control == "TextCtrl":
+            widget = wx.TextCtrl(self.panel, value=str(kwargs["initial"]))
         elif control == "SpinCtrlDouble":
             widget = wx.SpinCtrlDouble(
                 self.panel,
