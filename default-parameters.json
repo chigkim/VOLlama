@@ -91,6 +91,11 @@
             "description": "Sets the random number seed to use for generation. Setting this to a specific number will make the model generate the same text for the same prompt.",
             "range": "Integer value"
         },
+        "thinking": {
+            "value": true,
+            "description": "Enable reasoning.",
+            "range": "Boolean value"
+        },
         "num_gpu": {
             "value": null,
             "description": "Sets the number of layers to load to GPU.",

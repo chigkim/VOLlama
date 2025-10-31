@@ -289,6 +289,7 @@ class Model:
                 assistant_name = assistant_name[: assistant_name.index(":")]
             wx.CallAfter(window.response.AppendText, assistant_name + ": ")
             self.generate = True
+            thinking = False
             message = ""
             sentence = ""
             for chunk in response:
@@ -296,16 +297,30 @@ class Model:
                     wx.CallAfter(window.setStatus, "Typing...")
                 data = chunk
                 if not isinstance(chunk, str):
-                    chunk = chunk.delta
-                message += chunk
-                if settings.speakResponse:
+                    if hasattr(chunk, "delta") and chunk.delta:
+                        if thinking:
+                            chunk = "\nResponse: "+chunk.delta
+                            thinking = False
+                        else:
+                            chunk = chunk.delta
+                    elif hasattr(chunk, "additional_kwargs"):
+                        if "thinking_delta" in chunk.additional_kwargs and chunk.additional_kwargs["thinking_delta"]:
+                            if thinking:
+                                chunk = chunk.additional_kwargs["thinking_delta"]
+                            else:
+                                chunk = "Reasoning: "+chunk.additional_kwargs["thinking_delta"]
+                                thinking = True
+                if isinstance(chunk, str):
+                    message += chunk
+                if settings.speakResponse and isinstance(chunk, str):
                     sentence += chunk
                     if re.search(r"[\.\?!\n]\s*$", sentence):
                         sentence = sentence.strip()
                         if sentence:
                             wx.CallAfter(window.speech.speak, sentence)
                         sentence = ""
-                wx.CallAfter(window.response.AppendText, chunk)
+                if isinstance(chunk, str):
+                    wx.CallAfter(window.response.AppendText, chunk)
                 if not self.generate:
                     break
             if sentence and settings.speakResponse:
