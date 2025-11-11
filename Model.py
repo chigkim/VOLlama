@@ -299,7 +299,7 @@ class Model:
                 if not isinstance(chunk, str):
                     if hasattr(chunk, "delta") and chunk.delta:
                         if thinking:
-                            chunk = "\nResponse: "+chunk.delta
+                            chunk = "\n---\nResponse: "+chunk.delta
                             thinking = False
                         else:
                             chunk = chunk.delta
