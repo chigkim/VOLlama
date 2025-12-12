@@ -1,4 +1,4 @@
-version = 49
+version = 50
 import wx
 import threading
 import sounddevice as sd

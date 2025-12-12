@@ -29,6 +29,7 @@ from llama_index.readers.web import (
 )
 from llama_index.llms.openai_like import OpenAILike
 import requests
+from time import time
 
 
 def encode_image(image_path):
@@ -149,6 +150,7 @@ class Model:
             if "num_predict" in options:
                 additional_kwargs["max_tokens"] = options["num_predict"]
             additional_kwargs["timeout"] = 3600
+            additional_kwargs["stream_options"] = {"include_usage": True}
             Settings.llm = OpenAILike(
                 model=settings.model_name,
                 api_base=settings.openailike_base_url,
@@ -283,31 +285,51 @@ class Model:
             else:
                 self.messages.append(message)
                 wx.CallAfter(window.setStatus, "Processing...")
+                start_time = time()
                 response = Settings.llm.stream_chat(self.messages)
             assistant_name = settings.model_name.capitalize()
             if ":" in assistant_name:
                 assistant_name = assistant_name[: assistant_name.index(":")]
             wx.CallAfter(window.response.AppendText, assistant_name + ": ")
             self.generate = True
+            thinking = False
             message = ""
             sentence = ""
+            ttf = 0
             for chunk in response:
+                if not ttf:
+                    ttf = time()
                 if not sentence:
                     wx.CallAfter(window.setStatus, "Typing...")
                 data = chunk
                 if not isinstance(chunk, str):
-                    chunk = chunk.delta
-                message += chunk
-                if settings.speakResponse:
+                    if hasattr(chunk, "delta") and chunk.delta:
+                        if thinking:
+                            chunk = "\n---\nResponse: "+chunk.delta
+                            thinking = False
+                        else:
+                            chunk = chunk.delta
+                    elif hasattr(chunk, "additional_kwargs"):
+                        if "thinking_delta" in chunk.additional_kwargs and chunk.additional_kwargs["thinking_delta"]:
+                            if thinking:
+                                chunk = chunk.additional_kwargs["thinking_delta"]
+                            else:
+                                chunk = "Reasoning: "+chunk.additional_kwargs["thinking_delta"]
+                                thinking = True
+                if isinstance(chunk, str):
+                    message += chunk
+                if settings.speakResponse and isinstance(chunk, str):
                     sentence += chunk
                     if re.search(r"[\.\?!\n]\s*$", sentence):
                         sentence = sentence.strip()
                         if sentence:
                             wx.CallAfter(window.speech.speak, sentence)
                         sentence = ""
-                wx.CallAfter(window.response.AppendText, chunk)
+                if isinstance(chunk, str):
+                    wx.CallAfter(window.response.AppendText, chunk)
                 if not self.generate:
                     break
+            end_time = time()
             if sentence and settings.speakResponse:
                 wx.CallAfter(window.speech.speak, sentence)
             wx.CallAfter(window.response.AppendText, os.linesep)
@@ -337,6 +359,19 @@ class Model:
                 gen_count = data["eval_count"]
                 gen_duration = data["eval_duration"] / div
                 stat = f"Total: {total:.2f} seconds, Load: {load:.2f} seconds, Prompt Processing: {prompt_count} tokens ({prompt_count/prompt_duration:.2f} tokens/second), Text Generation: {gen_count} tokens ({gen_count/gen_duration:.2f} tokens/second)"
+                wx.CallAfter(window.setStatus, stat)
+            elif (
+                hasattr(data, "raw")
+                and hasattr(data.raw, "usage")
+                and data.raw.usage is not None
+            ):
+                usage = data.raw.usage
+                total = end_time-start_time
+                prompt_count = usage.prompt_tokens
+                prompt_duration = ttf-start_time
+                gen_count = usage.completion_tokens
+                gen_duration = end_time-ttf
+                stat = f"Estimated Speed: Total: {total:.2f} seconds, Prompt Processing: {prompt_count} tokens ({prompt_count/prompt_duration:.2f} tokens/second), Text Generation: {gen_count} tokens ({gen_count/gen_duration:.2f} tokens/second)"
                 wx.CallAfter(window.setStatus, stat)
             elif self.token_counter.total_llm_token_count:
                 status_message = f"Embedding Tokens: {self.token_counter.total_embedding_token_count}, LLM Prompt Tokens: {self.token_counter.prompt_llm_token_count}, LLM Completion Tokens: {self.token_counter.completion_llm_token_count}, Total LLM Token Count {self.token_counter.total_llm_token_count}"
