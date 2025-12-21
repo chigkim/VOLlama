@@ -112,6 +112,11 @@ class ChatWindow(wx.Frame):
         self.Bind(wx.EVT_MENU, self.onUploadDocument, documentMenu)
         urlMenu = chatMenu.Append(wx.ID_ANY, "Attach a &URL...\tCTRL+U")
         self.Bind(wx.EVT_MENU, self.onUploadURL, urlMenu)
+        self.showReasoning = chatMenu.Append(
+            wx.ID_ANY, "Show Reasoning", kind=wx.ITEM_CHECK
+        )
+        self.showReasoning.Check(settings.show_reasoning)
+        self.Bind(wx.EVT_MENU, self.onToggleShowReasoning, self.showReasoning)
         self.speakResponse = chatMenu.Append(
             wx.ID_ANY, "Read Response", kind=wx.ITEM_CHECK
         )
@@ -285,6 +290,9 @@ class ChatWindow(wx.Frame):
             self.modelList.SetSelection(0)
         self.onSelectModel()
         self.modelList.SetFocus()
+
+    def onToggleShowReasoning(self, e):
+        settings.show_reasoning = self.showReasoning.IsChecked()
 
     def onTogglePlaySound(self, e):
         settings.sound = self.playSound.IsChecked()

@@ -20,6 +20,7 @@
     "similarity_cutoff":0.0,
     "response_mode": "compact",
     "show_context": false,
+    "show_reasoning": true,
     "parameters": {
         "num_ctx": {
             "value": 8192,
@@ -90,6 +91,11 @@
             "value": null,
             "description": "Sets the random number seed to use for generation. Setting this to a specific number will make the model generate the same text for the same prompt.",
             "range": "Integer value"
+        },
+        "reasoning_effort": {
+            "value": null,
+            "description": "Sets the reasoning effort.",
+            "range": "none, low, medium, high"
         },
         "num_gpu": {
             "value": null,

@@ -116,6 +116,7 @@ class Model:
                 "presence_penalty",
                 "frequency_penalty",
                 "seed",
+                "reasoning_effort",
             ]
             additional_kwargs = {k: v for k, v in options.items() if k in keys}
             if "num_predict" in options:
@@ -145,6 +146,7 @@ class Model:
                 "presence_penalty",
                 "frequency_penalty",
                 "seed",
+                "reasoning_effort",
             ]
             additional_kwargs = {k: v for k, v in options.items() if k in keys}
             if "num_predict" in options:
@@ -303,18 +305,26 @@ class Model:
                     wx.CallAfter(window.setStatus, "Typing...")
                 data = chunk
                 if not isinstance(chunk, str):
+                    # print(chunk.__dict__)
                     if hasattr(chunk, "delta") and chunk.delta:
-                        if thinking:
-                            chunk = "\n---\nResponse: "+chunk.delta
+                        if settings.show_reasoning and thinking:
+                            chunk = "\n---\nResponse: " + chunk.delta
                             thinking = False
                         else:
                             chunk = chunk.delta
                     elif hasattr(chunk, "additional_kwargs"):
-                        if "thinking_delta" in chunk.additional_kwargs and chunk.additional_kwargs["thinking_delta"]:
+                        if (
+                            settings.show_reasoning
+                            and "thinking_delta" in chunk.additional_kwargs
+                            and chunk.additional_kwargs["thinking_delta"]
+                        ):
                             if thinking:
                                 chunk = chunk.additional_kwargs["thinking_delta"]
                             else:
-                                chunk = "Reasoning: "+chunk.additional_kwargs["thinking_delta"]
+                                chunk = (
+                                    "Reasoning: "
+                                    + chunk.additional_kwargs["thinking_delta"]
+                                )
                                 thinking = True
                 if isinstance(chunk, str):
                     message += chunk
@@ -366,11 +376,11 @@ class Model:
                 and data.raw.usage is not None
             ):
                 usage = data.raw.usage
-                total = end_time-start_time
+                total = end_time - start_time
                 prompt_count = usage.prompt_tokens
-                prompt_duration = ttf-start_time
+                prompt_duration = ttf - start_time
                 gen_count = usage.completion_tokens
-                gen_duration = end_time-ttf
+                gen_duration = end_time - ttf
                 stat = f"Estimated Speed: Total: {total:.2f} seconds, Prompt Processing: {prompt_count} tokens ({prompt_count/prompt_duration:.2f} tokens/second), Text Generation: {gen_count} tokens ({gen_count/gen_duration:.2f} tokens/second)"
                 wx.CallAfter(window.setStatus, stat)
             elif self.token_counter.total_llm_token_count:
