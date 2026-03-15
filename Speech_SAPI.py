@@ -1,5 +1,5 @@
 from Settings import settings
-import win32com.client
+import win32com.client.dynamic
 from SpeechDialog import SpeechDialog
 import wx
 
@@ -14,7 +14,7 @@ class Speech:
             self.set_rate(settings.rate)
 
     def setup_synth(self):
-        return win32com.client.Dispatch("SAPI.SpVoice")
+        return win32com.client.dynamic.Dispatch("SAPI.SpVoice")
 
     def speak(self, text):
         self.synth.Speak(text, 1)
