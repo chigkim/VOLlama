@@ -1,5 +1,8 @@
 from Settings import settings
+from pathlib import Path
+import shutil
 import win32com.client.dynamic
+import win32com.client.gencache
 from SpeechDialog import SpeechDialog
 import wx
 
@@ -16,6 +19,24 @@ class Speech:
     def setup_synth(self):
         return win32com.client.dynamic.Dispatch("SAPI.SpVoice")
 
+    def _is_broken_gen_py_cache(self, error):
+        return isinstance(error, AttributeError) and "CLSIDToClassMap" in str(error)
+
+    def _repair_gen_py_cache(self):
+        gen_py_path = Path(win32com.client.gencache.GetGeneratePath())
+        if gen_py_path.exists():
+            shutil.rmtree(gen_py_path, ignore_errors=True)
+
+    def _retry_after_cache_repair(self, action):
+        try:
+            return action()
+        except Exception as error:
+            if not self._is_broken_gen_py_cache(error):
+                raise
+            self._repair_gen_py_cache()
+            self.synth = self.setup_synth()
+            return action()
+
     def speak(self, text):
         self.synth.Speak(text, 1)
 
@@ -23,20 +44,27 @@ class Speech:
         self.synth.Speak("", 3)
 
     def get_voices(self):
-        return [voice.GetDescription() for voice in self.synth.GetVoices()]
+        return self._retry_after_cache_repair(
+            lambda: [voice.GetDescription() for voice in self.synth.GetVoices()]
+        )
 
     def get_current_voice(self):
-        return self.synth.Voice.GetDescription()
+        return self._retry_after_cache_repair(
+            lambda: self.synth.Voice.GetDescription()
+        )
 
     def set_voice(self, voice_identifier):
-        settings.voice = voice_identifier
-        if "default" in voice_identifier:
-            self.synth = self.setup_synth()
-            return
-        for voice in self.synth.GetVoices():
-            if voice.GetDescription() == voice_identifier:
-                self.synth.Voice = voice
+        def apply_voice():
+            settings.voice = voice_identifier
+            if "default" in voice_identifier:
+                self.synth = self.setup_synth()
                 return
+            for voice in self.synth.GetVoices():
+                if voice.GetDescription() == voice_identifier:
+                    self.synth.Voice = voice
+                    return
+
+        self._retry_after_cache_repair(apply_voice)
 
     def get_rate(self):
         return self.synth.Rate
