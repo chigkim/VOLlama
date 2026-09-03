@@ -22,7 +22,9 @@ import os
 class RAG:
     def __init__(self):
         Settings.embed_model = OpenAILikeEmbedding(
-            api_base=settings.openailike_base_url, api_key=settings.openailike_api_key, model_name=settings.embedding_model
+            api_base=settings.embedding_base_url,
+            api_key=settings.embedding_api_key or "none",
+            model_name=settings.embedding_model,
         )
         self.index = None
 

@@ -7,12 +7,8 @@ soundfile
 appdirs
 PyWin32; sys_platform == 'win32'
 PyObjC; sys_platform == 'darwin'
-ollama
 llama-index-core
-llama-index-embeddings-ollama
 llama-index-embeddings-openai-like
-llama-index-llms-ollama
-llama-index-llms-google-genai
 llama-index-llms-openai
 llama-index-llms-openai-like
 #llama-index-multi-modal-llms-openai
@@ -25,4 +21,5 @@ cryptography
 MainContentExtractor
 EbookLib
 html2text
+pandas
 transformers

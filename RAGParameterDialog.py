@@ -1,10 +1,10 @@
-from Settings import settings
+from Settings import settings, context_window
 import wx
 
 
 class RAGParameterDialog(wx.Dialog):
     def __init__(self, parent, title):
-        super().__init__(parent, title=title, size=(400, 420))
+        super().__init__(parent, title=title, size=(460, 520))
 
         self.panel = wx.Panel(self)
         self.grid_sizer = wx.GridBagSizer(
@@ -13,11 +13,19 @@ class RAGParameterDialog(wx.Dialog):
 
         # Define parameters and their tooltips
         self.parameters = {
+            "context_window": {
+                "label": "Context Window",
+                "control": "SpinCtrl",
+                "min": 512,
+                "max": 10000000,
+                "initial": context_window(),
+                "tooltip": "How many tokens the model can hold. Match what your server is running. It is not sent to the server; RAG uses it to decide how many retrieved chunks fit in one prompt.",
+            },
             "chunk_size": {
                 "label": "Chunk Size",
                 "control": "SpinCtrl",
                 "min": 1,
-                "max": int(settings.parameters["num_ctx"]["value"] / 2),
+                "max": int(context_window() / 2),
                 "initial": settings.chunk_size,
                 "tooltip": "Defines the size of text chunks for indexing. Smaller sizes may improve search granularity.",
             },
@@ -66,6 +74,18 @@ class RAGParameterDialog(wx.Dialog):
                 "initial": settings.show_context,
                 "tooltip": "Toggle to show or hide additional context related to your query.",
             },
+            "embedding_base_url": {
+                "label": "Embedding Base URL",
+                "control": "TextCtrl",
+                "initial": getattr(settings, "embedding_base_url", ""),
+                "tooltip": "OpenAI-compatible endpoint that serves the embedding model.",
+            },
+            "embedding_api_key": {
+                "label": "Embedding API Key",
+                "control": "TextCtrl",
+                "initial": getattr(settings, "embedding_api_key", ""),
+                "tooltip": "Leave empty if the embedding endpoint does not need one.",
+            },
             "embedding_model": {
                 "label": "Embedding Model",
                 "control": "TextCtrl",
@@ -87,7 +107,9 @@ class RAGParameterDialog(wx.Dialog):
         self.grid_sizer.Add(ok_button, pos=(row_index, 0), flag=wx.ALL, border=5)
         self.grid_sizer.Add(cancel_button, pos=(row_index, 1), flag=wx.ALL, border=5)
 
-        self.panel.SetSizer(self.grid_sizer)
+        self.grid_sizer.AddGrowableCol(1)
+        self.panel.SetSizerAndFit(self.grid_sizer)
+        self.Fit()
 
     def add_parameter_control(self, row, name, label, control, **kwargs):
         label_widget = wx.StaticText(self.panel, label=label)

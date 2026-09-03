@@ -1,22 +1,22 @@
-version = 50
+version = 51
 import wx
 import threading
 import sounddevice as sd
 import soundfile as sf
 import os
-from Model import Model
-from Settings import settings, config_dir
-from CopyDialog import CopyDialog
+from Model import Model, assistant_name
+from Settings import settings, config_dir, active_preset
 import codecs
 import json
 import platform
 from Update import check_update
-from Parameters import ParametersDialog
 from RAGParameterDialog import RAGParameterDialog
-from APISettingsDialog import APISettingsDialog
+from PresetDialog import (
+    PresetDialog,
+    CONNECTION_PAGE,
+)
 from Utils import displayError
 from llama_index.core.llms import ChatMessage
-from PromptDialog import PromptDialog
 import functools
 
 
@@ -71,19 +71,19 @@ class ChatWindow(wx.Frame):
         self.Maximize(True)
         self.Centre()
         self.Show()
-        self.PRESETS_PATH = config_dir() / "presets.json"
         self.model = Model()
-        self.model.setSystem(settings.system)
+        self.model.setSystem(self.systemPrompt())
         self.historyIndex = len(self.model.messages)
         self.prompt.SetFocus()
         self.image = None
         self.document = None
         self.documentURL = None
         threading.Thread(target=check_update, args=(version,)).start()
-        if settings.model_name:
-            self.refreshModels()
-        else:
-            self.displayAPISettingsDialog(None)
+        self.updatePresetLabel()
+        # version 0 means the settings file is incompatible; the user has already
+        # been told to reset, so don't pile a preset dialog on top of that.
+        if not settings.presets and settings.version != 0:
+            self.new_preset(None)
 
     def init_speech(self):
         if settings.screenreader:
@@ -136,46 +136,23 @@ class ChatWindow(wx.Frame):
             wx.ID_ANY, "Configure System Voice...\tCTRL+SHIFT+V"
         )
         self.Bind(wx.EVT_MENU, self.speech.present_voice_rate_dialog, self.configSpeech)
-        self.modelsMenu = chatMenu.Append(wx.ID_ANY, "&Models\tCTRL+l")
-        self.Bind(wx.EVT_MENU, self.FocusOnModelList, self.modelsMenu)
         self.presetMenu = chatMenu.Append(wx.ID_ANY, "&Presets\tCTRL+p")
         self.Bind(wx.EVT_MENU, self.onPresetPopup, self.presetMenu)
-        self.apiSettingsMenu = chatMenu.Append(
-            wx.ID_ANY, "&API Settings...\tCTRL+SHIFT+A"
-        )
-        self.Bind(wx.EVT_MENU, self.displayAPISettingsDialog, self.apiSettingsMenu)
+        chatMenu.AppendSeparator()
+        resetMenu = chatMenu.Append(wx.ID_ANY, "&Reset Settings...")
+        self.Bind(wx.EVT_MENU, self.OnResetSettings, resetMenu)
         exitMenu = chatMenu.Append(wx.ID_EXIT)
         self.Bind(wx.EVT_MENU, self.OnExit, exitMenu)
 
         editMenu = wx.Menu()
         copyMenu = editMenu.Append(wx.ID_ANY, "&Copy Last Message\tCTRL+SHIFT+C")
         self.Bind(wx.EVT_MENU, self.OnCopyMessage, copyMenu)
-        clearMenu = editMenu.Append(wx.ID_ANY, "Clear Last Message\tCTRL+K")
+        clearMenu = editMenu.Append(wx.ID_ANY, "C&lear Last Message\tCTRL+K")
         self.Bind(wx.EVT_MENU, self.clearLast, clearMenu)
         editPreviousMenu = editMenu.Append(wx.ID_ANY, "Edit Previous Message\tAlt+Up")
         self.Bind(wx.EVT_MENU, self.OnHistoryUp, editPreviousMenu)
         editNextMenu = editMenu.Append(wx.ID_ANY, "Edit Next Message\tALT+Down")
         self.Bind(wx.EVT_MENU, self.OnHistoryDown, editNextMenu)
-
-        advanceMenu = wx.Menu()
-        setSystemMenu = advanceMenu.Append(
-            wx.ID_ANY, "System Prompt Manager...\tCTRL+ALT+S"
-        )
-        self.Bind(wx.EVT_MENU, self.setSystem, setSystemMenu)
-        parametersMenu = advanceMenu.Append(
-            wx.ID_ANY, "Generation Parameters...\tCTRL+ALT+P"
-        )
-        self.Bind(wx.EVT_MENU, self.setParameters, parametersMenu)
-        self.copyModelMenu = advanceMenu.Append(wx.ID_ANY, "Copy Model...")
-        self.Bind(wx.EVT_MENU, self.OnCopyModel, self.copyModelMenu)
-        self.deleteModelMenu = advanceMenu.Append(wx.ID_ANY, "Delete Model")
-        self.Bind(wx.EVT_MENU, self.OnDeleteModel, self.deleteModelMenu)
-        self.copyModelMenu.Enable(settings.llm_name == "Ollama")
-        self.deleteModelMenu.Enable(settings.llm_name == "Ollama")
-        # logMenu = advanceMenu.Append(wx.ID_ANY, "Log\tCTRL+ALT+L")
-        # self.Bind(wx.EVT_MENU, self.log, logMenu)
-        resetMenu = advanceMenu.Append(wx.ID_ANY, "Reset Settings")
-        self.Bind(wx.EVT_MENU, self.OnResetSettings, resetMenu)
 
         ragMenu = wx.Menu()
         indexUrlMenu = ragMenu.Append(wx.ID_ANY, "Index &URL...")
@@ -194,29 +171,19 @@ class ChatWindow(wx.Frame):
         menuBar = wx.MenuBar()
         menuBar.Append(chatMenu, "&Chat")
         menuBar.Append(editMenu, "&Edit")
-        menuBar.Append(advanceMenu, "&Advance")
         menuBar.Append(ragMenu, "&Rag")
         self.SetMenuBar(menuBar)
 
         self.toolbar = self.CreateToolBar(wx.TB_HORIZONTAL | wx.NO_BORDER | wx.TB_FLAT)
-        self.modelList = wx.Choice(self.toolbar, choices=[])
-        self.modelList.Bind(wx.EVT_CHOICE, self.onSelectModel)
-        self.toolbar.AddControl(self.modelList, "Model")
-
-        self.presetBtn = wx.Button(self.toolbar, label="Preset: <none>")
+        self.presetBtn = wx.Button(self.toolbar, label="Preset: none")
         self.toolbar.AddControl(self.presetBtn, "Preset")
         self.presetBtn.Bind(wx.EVT_BUTTON, self.onPresetPopup)
 
-        self.copyButton = wx.Button(self.toolbar, label="Copy Last Message")
-        self.toolbar.AddControl(self.copyButton, "Copy Message")
-        self.copyButton.Bind(wx.EVT_BUTTON, self.OnCopyMessage)
-
-        self.clearButton = wx.Button(self.toolbar, label="Clear Last Message")
-        self.toolbar.AddControl(self.clearButton, "Clear Last Message")
-        self.clearButton.Bind(wx.EVT_BUTTON, self.clearLast)
-        self.newButton = wx.Button(self.toolbar, label="New Chat")
-        self.toolbar.AddControl(self.newButton, "New Chat")
-        self.newButton.Bind(wx.EVT_BUTTON, self.OnNewChat)
+        # Toolbar buttons are shortcuts to menu items: the keyboard shortcut is
+        # declared once, on the menu item, and the button fires that same item.
+        self.copyButton = self.addToolButton("Copy Last Message", copyMenu)
+        self.clearButton = self.addToolButton("Clear Last Message", clearMenu)
+        self.newButton = self.addToolButton("New Chat", newMenu)
         self.toolbar.Realize()
         self.SetupAccelerators()
         panel = wx.Panel(self)
@@ -261,35 +228,12 @@ class ChatWindow(wx.Frame):
     def refreshChat(self):
         self.response.Clear()
         start = 1 if self.model.messages[0].role == "system" else 0
-        name = settings.model_name.capitalize()
-        if ":" in name:
-            name = name[: name.index(":")]
+        name = assistant_name()
         for message in self.model.messages[start:]:
             role = name if message.role == "assistant" else "You"
             text = f"{role}: {message.content}"
             self.response.AppendText(text)
             self.response.AppendText(os.linesep)
-
-    def refreshModels(self):
-        self.modelList.SetItems([])
-        threading.Thread(target=self.getModels, daemon=True).start()
-
-    def getModels(self):
-        try:
-            models = self.model.get_models()
-        except Exception as e:
-            displayError(
-                "Unable to retrieve model list. Please verify your API settings and network connection."
-            )
-            wx.CallAfter(self.displayAPISettingsDialog, None)
-            return
-        self.modelList.SetItems(models)
-        if settings.model_name in models:
-            self.modelList.SetSelection(models.index(settings.model_name))
-        else:
-            self.modelList.SetSelection(0)
-        self.onSelectModel()
-        self.modelList.SetFocus()
 
     def onToggleShowReasoning(self, e):
         settings.show_reasoning = self.showReasoning.IsChecked()
@@ -303,43 +247,6 @@ class ChatWindow(wx.Frame):
     def onToggleUseScreenReader(self, e):
         settings.screenreader = self.useScreenReader.IsChecked()
         self.init_speech()
-
-    def setSystem(self, event):
-        dlg = PromptDialog(self, prompt=settings.system)
-        if dlg.ShowModal() == wx.ID_OK:
-            system = dlg.prompt_text.GetValue()
-            self.model.setSystem(system)
-            if len(self.model.messages) == 1:
-                self.historyIndex = 1
-            settings.system = system
-        dlg.Destroy()
-
-    def setParameters(self, e):
-        with ParametersDialog(self, "Generation Parameters") as dialog:
-            if dialog.ShowModal() == wx.ID_OK:
-                dialog.save()
-
-    def OnCopyModel(self, event):
-        with CopyDialog(self, title="Copy Model") as dlg:
-            dlg.name.SetValue("copy-" + settings.model_name)
-            dlg.modelfile.SetValue(self.model.modelfile())
-            if dlg.ShowModal() == wx.ID_OK:
-                name = dlg.name.GetValue()
-                modelfile = dlg.modelfile.GetValue()
-                self.model.create(name, modelfile)
-                self.refreshModels()
-
-    def OnDeleteModel(self, event):
-        with wx.MessageDialog(
-            self,
-            f"Are you sure you want to delete {settings.model_name}?",
-            "Delete",
-            wx.YES_NO | wx.ICON_QUESTION,
-        ) as dlg:
-            dlg.SetYesNoLabels("Yes", "No")
-            if dlg.ShowModal() == wx.ID_YES:
-                self.model.delete()
-                self.refreshModels()
 
     def OnResetSettings(self, event):
         with wx.MessageDialog(
@@ -358,17 +265,29 @@ class ChatWindow(wx.Frame):
     def OnNewChat(self, event):
         self.FocusOnPrompt()
         self.model.messages = []
-        self.model.setSystem(settings.system)
+        self.model.setSystem(self.systemPrompt())
         self.response.Clear()
+
+    def addToolButton(self, label, item):
+        """Add a toolbar button that triggers a menu item, shortcut included."""
+        button = wx.Button(self.toolbar, label=label)
+        button.SetName(label)
+        parts = item.GetItemLabel().split("\t")
+        button.SetToolTip(f"{label} ({parts[1]})" if len(parts) > 1 else label)
+        self.toolbar.AddControl(button, label)
+        button.Bind(
+            wx.EVT_BUTTON,
+            lambda event: self.ProcessEvent(
+                wx.CommandEvent(wx.EVT_MENU.typeId, item.GetId())
+            ),
+        )
+        return button
 
     def OnCopyMessage(self, event):
         message = self.model.messages[-1].content.strip()
         if wx.TheClipboard.Open():
             wx.TheClipboard.SetData(wx.TextDataObject(message))
             wx.TheClipboard.Close()
-
-    def onSelectModel(self, event=None):
-        self.model.setModel(self.modelList.GetString(self.modelList.GetSelection()))
 
     def SetupAccelerators(self):
         shortcuts = {
@@ -402,9 +321,6 @@ class ChatWindow(wx.Frame):
         else:
             self.prompt.SetValue("")
             self.sendButton.SetLabel("Send")
-
-    def FocusOnModelList(self, event):
-        self.modelList.SetFocus()
 
     def FocusOnPrompt(self, event=None):
         self.model.generate = False
@@ -545,9 +461,7 @@ class ChatWindow(wx.Frame):
             ).start()
 
     def onSave(self, e):
-        name = settings.model_name.capitalize()
-        if ":" in name:
-            name = name[: name.index(":")]
+        name = assistant_name()
         with wx.FileDialog(
             self,
             "Save",
@@ -588,14 +502,6 @@ class ChatWindow(wx.Frame):
             folder = dlg.GetPath()
             self.model.rag.save_index(folder)
 
-    def displayAPISettingsDialog(self, event):
-        with APISettingsDialog(self, "API Settings") as dlg:
-            dlg.ShowModal()
-            self.copyModelMenu.Enable(settings.llm_name == "Ollama")
-            self.deleteModelMenu.Enable(settings.llm_name == "Ollama")
-            self.model.models = []
-            self.refreshModels()
-
     def onShowRagSettings(self, event):
         with RAGParameterDialog(self, "RAG Settings") as dlg:
             dlg.ShowModal()
@@ -603,114 +509,119 @@ class ChatWindow(wx.Frame):
     def OnExit(self, event):
         self.Destroy()
 
-    def load_presets(self):
-        try:
-            with self.PRESETS_PATH.open("r", encoding="utf-8") as f:
-                return json.load(f)
-        except (IOError, json.JSONDecodeError):
-            return {}
+    def systemPrompt(self):
+        preset = active_preset()
+        return preset.get("system", "") if preset else ""
 
-    def save_presets(self, presets):
-        with self.PRESETS_PATH.open("w", encoding="utf-8") as f:
-            json.dump(presets, f, indent=2)
+    def updatePresetLabel(self):
+        name = (
+            settings.active_preset if settings.active_preset in settings.presets else ""
+        )
+        self.presetBtn.SetLabel(f"Preset: {name or 'none'}")
+        self.toolbar.Realize()
 
     def onPresetPopup(self, event):
-        presets = self.load_presets()
-        active = self.presetBtn.GetLabel().replace("Preset: ", "").strip()
+        presets = settings.presets
         menu = wx.Menu()
-
         for name in sorted(presets):
             pid = wx.NewIdRef()
             item = menu.Append(pid, name, kind=wx.ITEM_CHECK)
-            if name == active:
+            if name == settings.active_preset:
                 item.Check(True)
             self.Bind(
                 wx.EVT_MENU, functools.partial(self.apply_preset, name=name), id=pid
             )
         menu.AppendSeparator()
-        # New / Save / Delete entries
         new_id = wx.NewIdRef()
-        menu.Append(new_id, "New…")
+        menu.Append(new_id, "&New...")
         self.Bind(wx.EVT_MENU, self.new_preset, id=new_id)
-
-        save_id = wx.NewIdRef()
-        menu.Append(save_id, "Save…")
-        self.Bind(wx.EVT_MENU, self.save_preset, id=save_id)
-
+        edit_id = wx.NewIdRef()
+        edit_item = menu.Append(edit_id, "&Edit...")
+        self.Bind(wx.EVT_MENU, self.edit_preset, id=edit_id)
+        dup_id = wx.NewIdRef()
+        dup_item = menu.Append(dup_id, "D&uplicate...")
+        self.Bind(wx.EVT_MENU, self.duplicate_preset, id=dup_id)
         del_id = wx.NewIdRef()
-        menu.Append(del_id, "Delete…")
+        del_item = menu.Append(del_id, "&Delete...")
         self.Bind(wx.EVT_MENU, self.delete_preset, id=del_id)
-
-        # Show the menu under the button
+        has_active = settings.active_preset in presets
+        for item in (edit_item, dup_item, del_item):
+            item.Enable(has_active)
         self.toolbar.PopupMenu(menu, self.presetBtn.Position)
         menu.Destroy()
         self.FocusOnPrompt()
 
-    def gather_current_settings(self):
-        return {
-            "llm_name": settings.llm_name,
-            "model_name": settings.model_name,
-            "system": settings.system,
-            "parameters": settings.parameters,
-        }
-
     def apply_preset(self, event, name):
-        presets = self.load_presets()
-        p = presets.get(name)
-        if not p:
+        if name not in settings.presets:
+            self.updatePresetLabel()
             return
-        settings.llm_name = p["llm_name"]
-        settings.model_name = p["model_name"]
-        settings.system = p["system"]
-        settings.parameters = p["parameters"]
-        # refresh UI
-        self.presetBtn.SetLabel(f"Preset: {name}")
-        self.refreshModels()
+        settings.active_preset = name
+        self.updatePresetLabel()
         self.OnNewChat(None)
 
-    def new_preset(self, event):
-        dlg = wx.TextEntryDialog(self, "Enter new preset name:", "New Preset")
-        if dlg.ShowModal() != wx.ID_OK:
-            return
-        name = dlg.GetValue().strip()
-        dlg.Destroy()
-        presets = self.load_presets()
-        if name in presets:
-            wx.MessageBox(f"«{name}» already exists.", "Error", wx.ICON_ERROR)
-            return
-        presets[name] = self.gather_current_settings()
-        self.save_presets(presets)
-        self.presetBtn.SetLabel(f"Preset: {name}")
+    def store_preset(self, name, preset):
+        presets = settings.presets
+        presets[name] = preset
+        settings.presets = presets
+        settings.active_preset = name
+        self.updatePresetLabel()
 
-    def save_preset(self, event):
-        """Overwrite the currently selected preset after confirmation."""
-        label = self.presetBtn.GetLabel()  # e.g. "Preset: MyPreset"
-        name = label.replace("Preset: ", "").strip()
-        if name in ("<none>", ""):
-            wx.MessageBox("No preset selected to save.", "Info", wx.ICON_INFORMATION)
+    def new_preset(self, event, name="", preset=None):
+        with PresetDialog(self, "New Preset", name=name, preset=preset) as dlg:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            name = dlg.get_name()
+            if name in settings.presets:
+                displayError(Exception(f"A preset named {name} already exists."))
+                return
+            self.store_preset(name, dlg.get_preset())
+        self.OnNewChat(None)
+
+    def edit_preset(self, event, page=CONNECTION_PAGE):
+        name = settings.active_preset
+        preset = settings.presets.get(name)
+        if not preset:
+            self.new_preset(event)
             return
-        presets = self.load_presets()
-        presets[name] = self.gather_current_settings()
-        self.save_presets(presets)
+        with PresetDialog(
+            self, f"Edit Preset: {name}", name=name, preset=preset, page=page
+        ) as dlg:
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            new_name = dlg.get_name()
+            presets = settings.presets
+            if new_name != name:
+                if new_name in presets:
+                    displayError(
+                        Exception(f"A preset named {new_name} already exists.")
+                    )
+                    return
+                presets.pop(name, None)
+            self.store_preset(new_name, dlg.get_preset())
+        self.OnNewChat(None)
+
+    def duplicate_preset(self, event):
+        preset = settings.presets.get(settings.active_preset)
+        if not preset:
+            return
+        self.new_preset(event, name=f"{settings.active_preset} copy", preset=preset)
 
     def delete_preset(self, event):
-        """Delete the currently selected preset after confirmation."""
-        label = self.presetBtn.GetLabel()
-        name = label.replace("Preset: ", "").strip()
-        if name in ("<none>", ""):
-            wx.MessageBox("No preset selected to delete.", "Info", wx.ICON_INFORMATION)
+        name = settings.active_preset
+        if name not in settings.presets:
+            displayError(Exception("No preset is selected."))
             return
-        if (
-            wx.MessageBox(
-                f"Delete “{name}” forever?", "Confirm", wx.YES_NO | wx.ICON_WARNING
-            )
-            != wx.YES
-        ):
+        confirm = wx.MessageBox(
+            f"Delete the preset {name}?", "Delete Preset", wx.YES_NO | wx.ICON_WARNING
+        )
+        if confirm != wx.YES:
             return
-        presets = self.load_presets()
+        presets = settings.presets
         presets.pop(name, None)
-        self.save_presets(presets)
-        self.presetBtn.SetLabel("Preset: <none>")
+        settings.presets = presets
+        settings.active_preset = sorted(presets)[0] if presets else ""
+        self.updatePresetLabel()
+        self.OnNewChat(None)
 
     def log(self, e):
         print(settings.to_dict())

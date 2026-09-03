@@ -1,20 +1,13 @@
-from Settings import settings
+from Settings import settings, active_preset, context_window
 from Parameters import get_parameters
-from ollama import Client as Ollama_Client
 from openai import OpenAI as OpenAI_client
-from google import genai as gemini_client
-from google.genai import types as gemini_types
 from llama_index.core import Settings
-from llama_index.core.base.llms.types import ChatResponse, ImageBlock, VideoBlock
-from llama_index.llms.ollama import Ollama
-from llama_index.llms.openai import OpenAI
-from llama_index.llms.google_genai import GoogleGenAI
+from llama_index.core.base.llms.types import ImageBlock, VideoBlock
 from llama_index.core.llms import ChatMessage
 import wx
 from Utils import displayError
 from pathlib import Path
 import os
-from Parameters import get_parameters
 from RAG import RAG
 import re
 import tiktoken
@@ -31,6 +24,33 @@ from llama_index.readers.web import (
 from llama_index.llms.openai_like import OpenAILike
 import requests
 from time import time
+
+
+# Parameters that every OpenAI-compatible endpoint understands. Anything else
+# in the schema stays local and is never sent.
+OPENAI_PARAMS = [
+    "temperature",
+    "top_p",
+    "presence_penalty",
+    "frequency_penalty",
+    "seed",
+    "stop",
+    "reasoning_effort",
+]
+
+
+def fetch_models(base_url, api_key):
+    """Model ids an OpenAI-compatible endpoint offers, or [] if it has no list."""
+    client = OpenAI_client(base_url=base_url, api_key=api_key or "none")
+    return sorted(i.id for i in client.models.list().data if i.id)
+
+
+def assistant_name():
+    """What the assistant is called in the transcript: the active preset name."""
+    if settings.active_preset:
+        return settings.active_preset
+    preset = active_preset()
+    return preset["model"] if preset and preset.get("model") else "Assistant"
 
 
 def encode_image(image_path):
@@ -63,130 +83,38 @@ class Model:
         self.documentURL = None
         self.document = None
         self.rag = None
-        self.models = []
         self.token_counter = TokenCountingHandler(
             tokenizer=tiktoken.encoding_for_model("gpt-3.5-turbo").encode
         )
 
-    def get_models(self):
-        ids = []
-        if settings.llm_name == "Ollama":
-            models = Ollama_Client(host=settings.ollama_base_url).list()["models"]
-            ids = [model.model for model in models]
-        if settings.llm_name == "OpenAI":
-            if not settings.openai_api_key:
-                return ids
-            client = OpenAI_client(api_key=settings.openai_api_key)
-            ids = [i.id for i in list(client.models.list().data)]
-        if settings.llm_name == "OpenAILike":
-            client = OpenAI_client(
-                base_url=settings.openailike_base_url,
-                api_key=settings.openailike_api_key,
-            )
-            ids = [i.id for i in list(client.models.list().data)]
-        if settings.llm_name == "Gemini":
-            if not settings.gemini_api_key:
-                return ids
-            client = gemini_client.Client(api_key=settings.gemini_api_key)
-            ids = [
-                m.name
-                for m in client.models.list()
-                if m.name and "generateContent" in (m.supported_actions or [])
-            ]
-        ids.sort()
-        self.models = ids
-        return ids
-
     def init_llm(self):
-        if settings.model_name not in self.models:
-            settings.model_name = self.get_models()[0]
+        preset = active_preset()
+        if not preset:
+            raise Exception(
+                "No preset configured. Press control+p to create one."
+            )
+        if not preset.get("base_url"):
+            raise Exception("This preset has no base URL. Press control+p to edit it.")
+        if not preset.get("model"):
+            raise Exception("This preset has no model. Press control+p to edit it.")
         options = {k: v for k, v in get_parameters().items() if v is not None}
-        if settings.llm_name == "Ollama":
-            Settings.llm = Ollama(
-                model=settings.model_name,
-                request_timeout=3600,
-                base_url=settings.ollama_base_url,
-                additional_kwargs=options,
-            )
-        if settings.llm_name == "OpenAI":
-            if not settings.openai_api_key:
-                return
-            keys = [
-                "temperature",
-                "top_p",
-                "presence_penalty",
-                "frequency_penalty",
-                "seed",
-                "reasoning_effort",
-            ]
-            additional_kwargs = {k: v for k, v in options.items() if k in keys}
-            if "num_predict" in options:
-                additional_kwargs["max_tokens"] = options["num_predict"]
-            Settings.llm = OpenAI(
-                model=settings.model_name,
-                api_key=settings.openai_api_key,
-                additional_kwargs=additional_kwargs,
-            )
-        elif settings.llm_name == "Gemini":
-            if not settings.gemini_api_key:
-                return
-            os.environ["GOOGLE_API_KEY"] = settings.gemini_api_key
-            keys = ["temperature", "top_p", "top_k"]
-            generate_kwargs = {k: v for k, v in options.items() if k in keys}
-            if "num_predict" in options:
-                generate_kwargs["max_output_tokens"] = options["num_predict"]
-            Settings.llm = GoogleGenAI(
-                model=settings.model_name,
-                api_key=settings.gemini_api_key,
-                generation_config=gemini_types.GenerateContentConfig(
-                    **generate_kwargs
-                ),
-            )
-        elif settings.llm_name == "OpenAILike":
-            if not settings.openailike_base_url or not settings.openailike_api_key:
-                return
-            keys = [
-                "temperature",
-                "top_p",
-                "presence_penalty",
-                "frequency_penalty",
-                "seed",
-                "reasoning_effort",
-            ]
-            additional_kwargs = {k: v for k, v in options.items() if k in keys}
-            if "num_predict" in options:
-                additional_kwargs["max_tokens"] = options["num_predict"]
-            additional_kwargs["timeout"] = 3600
-            additional_kwargs["stream_options"] = {"include_usage": True}
-            Settings.llm = OpenAILike(
-                model=settings.model_name,
-                api_base=settings.openailike_base_url,
-                api_key=settings.openailike_api_key,
-                timeout=3600,
-                additional_kwargs=additional_kwargs,
-            )
-            Settings.llm.is_chat_model = True
-        else:
-            return
+        additional_kwargs = {k: v for k, v in options.items() if k in OPENAI_PARAMS}
+        additional_kwargs["stream_options"] = {"include_usage": True}
+        Settings.llm = OpenAILike(
+            model=preset["model"],
+            api_base=preset["base_url"],
+            api_key=preset.get("api_key") or "none",
+            context_window=context_window(),
+            is_chat_model=True,
+            timeout=3600,
+            max_tokens=options.get("max_tokens"),
+            additional_kwargs=additional_kwargs,
+        )
         Settings.chunk_size = settings.chunk_size
         Settings.chunk_overlap = settings.chunk_overlap
         Settings.similarity_top_k = settings.similarity_top_k
         Settings.similarity_cutoff = settings.similarity_cutoff
-        Settings.context_window = options["num_ctx"]
-        # Settings.num_output = options['num_ctx']-256
-
-    def delete(self):
-        Ollama_Client(host=settings.ollama_base_url).delete(settings.model_name)
-
-    def create(self, name, modelfile):
-        Ollama_Client(host=settings.ollama_base_url).create(
-            name, modelfile=modelfile, stream=False
-        )
-
-    def modelfile(self):
-        return Ollama_Client(host=settings.ollama_base_url).show(settings.model_name)[
-            "modelfile"
-        ]
+        Settings.context_window = context_window()
 
     def load_index(self, folder):
         if not self.rag:
@@ -243,11 +171,6 @@ class Model:
         if documents and documents[0].text.strip():
             return documents[0].text.strip()
 
-    def setModel(self, name):
-        if settings.model_name == name:
-            return
-        settings.model_name = name
-
     def setSystem(self, system):
         if system == "":
             if len(self.messages) > 0 and self.messages[0].role == "system":
@@ -297,10 +220,7 @@ class Model:
                 wx.CallAfter(window.setStatus, "Processing...")
                 start_time = time()
                 response = Settings.llm.stream_chat(self.messages)
-            assistant_name = settings.model_name.capitalize()
-            if ":" in assistant_name:
-                assistant_name = assistant_name[: assistant_name.index(":")]
-            wx.CallAfter(window.response.AppendText, assistant_name + ": ")
+            wx.CallAfter(window.response.AppendText, assistant_name() + ": ")
             self.generate = True
             thinking = False
             message = ""
@@ -312,39 +232,34 @@ class Model:
                 if not sentence:
                     wx.CallAfter(window.setStatus, "Typing...")
                 data = chunk
-                if not isinstance(chunk, str):
-                    # print(chunk.__dict__)
-                    if hasattr(chunk, "delta") and chunk.delta:
-                        if settings.show_reasoning and thinking:
-                            chunk = "\n---\nResponse: " + chunk.delta
+                text = ""
+                if isinstance(chunk, str):
+                    text = chunk
+                else:
+                    reasoning = ""
+                    if hasattr(chunk, "additional_kwargs") and chunk.additional_kwargs:
+                        reasoning = chunk.additional_kwargs.get("thinking_delta") or ""
+                    if reasoning and settings.show_reasoning:
+                        if not thinking:
+                            text += "Reasoning: "
+                            thinking = True
+                        text += reasoning
+                    delta = getattr(chunk, "delta", None)
+                    if delta:
+                        if thinking:
+                            text += "\n---\nResponse: "
                             thinking = False
-                        else:
-                            chunk = chunk.delta
-                    elif hasattr(chunk, "additional_kwargs"):
-                        if (
-                            settings.show_reasoning
-                            and "thinking_delta" in chunk.additional_kwargs
-                            and chunk.additional_kwargs["thinking_delta"]
-                        ):
-                            if thinking:
-                                chunk = chunk.additional_kwargs["thinking_delta"]
-                            else:
-                                chunk = (
-                                    "Reasoning: "
-                                    + chunk.additional_kwargs["thinking_delta"]
-                                )
-                                thinking = True
-                if isinstance(chunk, str):
-                    message += chunk
-                if settings.speakResponse and isinstance(chunk, str):
-                    sentence += chunk
-                    if re.search(r"[\.\?!\n]\s*$", sentence):
-                        sentence = sentence.strip()
-                        if sentence:
-                            wx.CallAfter(window.speech.speak, sentence)
-                        sentence = ""
-                if isinstance(chunk, str):
-                    wx.CallAfter(window.response.AppendText, chunk)
+                        text += delta
+                if text:
+                    message += text
+                    wx.CallAfter(window.response.AppendText, text)
+                    if settings.speakResponse:
+                        sentence += text
+                        if re.search(r"[\.\?!\n]\s*$", sentence):
+                            sentence = sentence.strip()
+                            if sentence:
+                                wx.CallAfter(window.speech.speak, sentence)
+                            sentence = ""
                 if not self.generate:
                     break
             end_time = time()
@@ -361,24 +276,6 @@ class Model:
                         f"----------{os.linesep}Context {i+1} similarity score: {nodes[i].score:.2f}\n{text}{os.linesep}",
                     )
             if (
-                isinstance(data, ChatResponse)
-                and hasattr(data, "raw")
-                and "total_duration" in data.raw
-                and data.raw["total_duration"] is not None
-            ):
-                data = data.raw
-                div = 1000000000
-                total = data["total_duration"] / div
-                load = data["load_duration"] / div
-                prompt_count = (
-                    data["prompt_eval_count"] if "prompt_eval_count" in data else 0
-                )
-                prompt_duration = data["prompt_eval_duration"] / div
-                gen_count = data["eval_count"]
-                gen_duration = data["eval_duration"] / div
-                stat = f"Total: {total:.2f} seconds, Load: {load:.2f} seconds, Prompt Processing: {prompt_count} tokens ({prompt_count/prompt_duration:.2f} tokens/second), Text Generation: {gen_count} tokens ({gen_count/gen_duration:.2f} tokens/second)"
-                wx.CallAfter(window.setStatus, stat)
-            elif (
                 hasattr(data, "raw")
                 and hasattr(data.raw, "usage")
                 and data.raw.usage is not None
@@ -386,9 +283,9 @@ class Model:
                 usage = data.raw.usage
                 total = end_time - start_time
                 prompt_count = usage.prompt_tokens
-                prompt_duration = ttf - start_time
+                prompt_duration = max(ttf - start_time, 1e-6)
                 gen_count = usage.completion_tokens
-                gen_duration = end_time - ttf
+                gen_duration = max(end_time - ttf, 1e-6)
                 stat = f"Estimated Speed: Total: {total:.2f} seconds, Prompt Processing: {prompt_count} tokens ({prompt_count/prompt_duration:.2f} tokens/second), Text Generation: {gen_count} tokens ({gen_count/gen_duration:.2f} tokens/second)"
                 wx.CallAfter(window.setStatus, stat)
             elif self.token_counter.total_llm_token_count:
