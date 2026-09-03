@@ -2,12 +2,13 @@ from Settings import settings
 from Parameters import get_parameters
 from ollama import Client as Ollama_Client
 from openai import OpenAI as OpenAI_client
-import google.generativeai as gemini_client
+from google import genai as gemini_client
+from google.genai import types as gemini_types
 from llama_index.core import Settings
-from llama_index.core.base.llms.types import ChatResponse, ImageBlock
+from llama_index.core.base.llms.types import ChatResponse, ImageBlock, VideoBlock
 from llama_index.llms.ollama import Ollama
 from llama_index.llms.openai import OpenAI
-from llama_index.llms.gemini import Gemini
+from llama_index.llms.google_genai import GoogleGenAI
 from llama_index.core.llms import ChatMessage
 import wx
 from Utils import displayError
@@ -86,11 +87,11 @@ class Model:
         if settings.llm_name == "Gemini":
             if not settings.gemini_api_key:
                 return ids
-            gemini_client.configure(api_key=settings.gemini_api_key)
+            client = gemini_client.Client(api_key=settings.gemini_api_key)
             ids = [
                 m.name
-                for m in list(gemini_client.list_models())
-                if "generateContent" in m.supported_generation_methods
+                for m in client.models.list()
+                if m.name and "generateContent" in (m.supported_actions or [])
             ]
         ids.sort()
         self.models = ids
@@ -134,8 +135,12 @@ class Model:
             generate_kwargs = {k: v for k, v in options.items() if k in keys}
             if "num_predict" in options:
                 generate_kwargs["max_output_tokens"] = options["num_predict"]
-            Settings.llm = Gemini(
-                model_name=settings.model_name, generate_kwargs=generate_kwargs
+            Settings.llm = GoogleGenAI(
+                model=settings.model_name,
+                api_key=settings.gemini_api_key,
+                generation_config=gemini_types.GenerateContentConfig(
+                    **generate_kwargs
+                ),
             )
         elif settings.llm_name == "OpenAILike":
             if not settings.openailike_base_url or not settings.openailike_api_key:
@@ -273,8 +278,11 @@ class Model:
                 content=content,
             )
             for image in self.image:
-                image = encode_image(image)
-                message.blocks.append(ImageBlock(image=image))
+                if image[image.rindex(".")+1:] == "mp4":
+                    message.blocks.append(VideoBlock(path=image))
+                else:
+                    image = encode_image(image)
+                    message.blocks.append(ImageBlock(image=image))
         try:
             if content.startswith("/q ") and self.rag:
                 if not self.rag.index:

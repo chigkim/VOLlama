@@ -468,7 +468,7 @@ class ChatWindow(wx.Frame):
         with wx.FileDialog(
             self,
             "Choose an image",
-            wildcard="Image files (*.jpg;*.jpeg;*.png)|*.jpg;*.jpeg;*.png",
+            wildcard="Image files (*.jpg;*.jpeg;*.png)|*.jpg;*.jpeg;*.png;*.mp4",
             style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST | wx.FD_MULTIPLE,
         ) as dlg:
             if dlg.ShowModal() == wx.ID_CANCEL:
