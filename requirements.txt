@@ -10,6 +10,7 @@ PyObjC; sys_platform == 'darwin'
 ollama
 llama-index-core
 llama-index-embeddings-ollama
+llama-index-embeddings-openai-like
 llama-index-llms-ollama
 llama-index-llms-google-genai
 llama-index-llms-openai

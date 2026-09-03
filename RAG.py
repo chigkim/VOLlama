@@ -7,8 +7,7 @@ from llama_index.core import (
     Settings,
     get_response_synthesizer,
 )
-from llama_index.embeddings.ollama import OllamaEmbedding
-from llama_index.llms.ollama import Ollama
+from llama_index.embeddings.openai_like import OpenAILikeEmbedding
 from llama_index.readers.web import (
     MainContentExtractorReader,
     TrafilaturaWebReader,
@@ -22,8 +21,8 @@ import os
 
 class RAG:
     def __init__(self):
-        Settings.embed_model = OllamaEmbedding(
-            base_url=settings.ollama_base_url, model_name=settings.embedding_model
+        Settings.embed_model = OpenAILikeEmbedding(
+            api_base=settings.openailike_base_url, api_key=settings.openailike_api_key, model_name=settings.embedding_model
         )
         self.index = None
 
