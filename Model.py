@@ -42,6 +42,30 @@ OPENAI_PARAMS = [
 ]
 
 
+class Client(OpenAILike):
+    """OpenAILike, minus the parameter it sends whether or not you asked.
+
+    llama_index puts `temperature` into every request unconditionally: it is a
+    constructor field with a default of its own rather than part of
+    additional_kwargs, so a preset with the Temperature box left empty still
+    sent 0.1. That is wrong twice over. It quietly overrides whatever default
+    the server would have used, which is the one thing an empty box should
+    mean. And some models reject the parameter outright — `temperature` is
+    deprecated for this model — which fails the whole request over a value the
+    user never set and cannot see.
+
+    Whether the preset set one is read off additional_kwargs rather than kept
+    as a flag of its own, since that dict is what actually goes out: the two
+    cannot drift apart.
+    """
+
+    def _get_model_kwargs(self, **kwargs):
+        options = super()._get_model_kwargs(**kwargs)
+        if "temperature" not in self.additional_kwargs:
+            options.pop("temperature", None)
+        return options
+
+
 def fetch_models(base_url, api_key):
     """Model ids an OpenAI-compatible endpoint offers, or [] if it has no list."""
     client = OpenAI_client(base_url=base_url, api_key=api_key or "none")
@@ -74,11 +98,62 @@ def field(obj, name, default=None):
     return getattr(obj, name, default)
 
 
-def tool_calls_of(chunk):
+def plain(value):
+    """A pydantic model as the dict it was parsed from, or the value unchanged."""
+    dump = getattr(value, "model_dump", None)
+    return dump() if callable(dump) else value
+
+
+def extra_content(call):
+    """The vendor fields hung off one streamed tool call fragment, if any.
+
+    Gemini's thinking models sign every function call and its OpenAI-compatible
+    endpoint carries the signature as `extra_content.google.thought_signature`.
+    The name is not in the OpenAI schema, so the openai library parses it into
+    the model's extras rather than a field; both places are checked because a
+    server that answers us with plain dicts has it as a key.
+    """
+    if isinstance(call, dict):
+        return call.get("extra_content")
+    found = getattr(call, "extra_content", None)
+    if found is None:
+        found = (getattr(call, "model_extra", None) or {}).get("extra_content")
+    return plain(found)
+
+
+def collect_extras(chunk, extras):
+    """Remember the vendor fields on this chunk's tool call fragments, by index.
+
+    Gemini refuses the next request outright if a function call is sent back
+    without its thought signature — 400, "Function call is missing a
+    thought_signature" — so a signature lost here kills every turn in which the
+    model calls a tool. It is lost by default: `update_tool_calls()` merges the
+    streamed fragments by copying the fields it knows about into the first
+    fragment's object, and the signature is not one of them. So we read the raw
+    chunks ourselves. Keyed by the call's own index rather than by arrival,
+    since a fragment can be for any call in progress and the field can be on
+    any fragment of one.
+    """
+    raw = getattr(chunk, "raw", None)
+    choices = getattr(raw, "choices", None)
+    if choices is None and isinstance(raw, dict):
+        choices = raw.get("choices")
+    if not choices:
+        return
+    delta = field(choices[0], "delta")
+    for i, call in enumerate(field(delta, "tool_calls") or []):
+        found = extra_content(call)
+        if found:
+            index = field(call, "index")
+            extras[index if index is not None else i] = found
+
+
+def tool_calls_of(chunk, extras=None):
     """Tool calls accumulated on the last streamed chunk, as OpenAI dicts.
 
     llama_index merges the streamed tool call fragments for us, so the final
-    chunk carries the whole list in additional_kwargs.
+    chunk carries the whole list in additional_kwargs. What it does not carry
+    is anything outside the OpenAI schema, which collect_extras() saved.
     """
     message = getattr(chunk, "message", None)
     raw = field(getattr(message, "additional_kwargs", {}) or {}, "tool_calls") or []
@@ -88,16 +163,21 @@ def tool_calls_of(chunk):
         name = field(function, "name") or ""
         if not name:
             continue
-        calls.append(
-            {
-                "id": field(call, "id") or f"call_{i}",
-                "type": "function",
-                "function": {
-                    "name": name,
-                    "arguments": field(function, "arguments") or "",
-                },
-            }
+        index = field(call, "index")
+        made = {
+            "id": field(call, "id") or f"call_{i}",
+            "type": "function",
+            "function": {
+                "name": name,
+                "arguments": field(function, "arguments") or "",
+            },
+        }
+        found = (extras or {}).get(index if index is not None else i) or extra_content(
+            call
         )
+        if found:
+            made["extra_content"] = found
+        calls.append(made)
     return calls
 
 
@@ -304,7 +384,7 @@ class Model:
         additional_kwargs["stream_options"] = {"include_usage": True}
         if tools_enabled():
             additional_kwargs["tools"] = Tools.TOOLS
-        Settings.llm = OpenAILike(
+        Settings.llm = Client(
             model=preset["model"],
             api_base=preset["base_url"],
             api_key=preset.get("api_key") or "none",
@@ -620,6 +700,7 @@ class Model:
         sentence = ""
         ttf = 0
         data = None
+        extras = {}
         self.stop = ""
         for chunk in response:
             if not ttf:
@@ -627,6 +708,7 @@ class Model:
             if not sentence:
                 wx.CallAfter(window.setStatus, "Typing...")
             data = chunk
+            collect_extras(chunk, extras)
             text = ""
             if isinstance(chunk, str):
                 text = chunk
@@ -662,7 +744,7 @@ class Model:
         if sentence and settings.speakResponse:
             wx.CallAfter(window.speech.speak, sentence)
         wx.CallAfter(window.response.AppendText, os.linesep)
-        return message, tool_calls_of(data), data, start_time, ttf, end_time
+        return message, tool_calls_of(data, extras), data, start_time, ttf, end_time
 
     def runTool(self, call, window, allowed):
         """Run one tool call, echo it to the transcript, return its tool message."""

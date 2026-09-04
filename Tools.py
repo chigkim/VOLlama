@@ -24,10 +24,12 @@ have to fit inside one tool call. The model reattaches with the poll tool.
 import json
 import os
 import platform
+import re
 import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from datetime import date
@@ -43,8 +45,18 @@ WINDOWS = platform.system() == "Windows"
 YIELD_SECONDS = 10
 
 # Total runtime a job gets before it is killed, whether or not anyone polls it.
-DEFAULT_TIMEOUT = 300
+# A ceiling rather than the everyday limit: what normally ends a job is going
+# quiet, not going long, so this is generous and IDLE_TIMEOUT does the work.
+DEFAULT_TIMEOUT = 1800
 MAX_TIMEOUT = 3600
+
+# How long a background job may produce nothing at all before it is killed.
+# Output is a far better sign of life than elapsed time: a build that prints
+# steadily for twenty minutes is working, and a command wedged on a hidden
+# prompt is not, however long its timeout still has to run. Killing on the
+# clock instead gets both backwards, and the model's only recovery from the
+# first case is to guess a bigger number and pay for the whole build twice.
+IDLE_TIMEOUT = 120
 
 # How long poll may block waiting for a job to finish.
 MAX_POLL_WAIT = 30
@@ -58,13 +70,42 @@ STOP_CHECK = 0.25
 MAX_OUTPUT = 8000
 HEAD_SHARE = 0.4
 
+# Where the whole of an output too big to send is kept, so the trimming is only
+# of what reaches the model and not of the output itself. The middle of a build
+# log is exactly where its first error is, and a model handed the head and the
+# tail has no way back to it. With a path it has one, through the read tool it
+# already has. How long an unread log is worth keeping around.
+SPILL_DIR = "vollama-run-output"
+SPILL_TTL = 24 * 60 * 60
+
+# Ways a command puts a process beyond our reach. Jobs start as group leaders so
+# that killing one kills its children, but a process that detaches itself leaves
+# that group: poll cannot read it, kill_all() on New Chat and on exit cannot stop
+# it, and it outlives VOLlama. Warned about rather than refused, since a command
+# is occasionally meant to do this.
+#
+# These mean nothing else wherever they appear, so they are looked for anywhere.
+DETACHERS = ("nohup", "disown", "setsid", "start-process")
+
+# cmd's start does detach, but start is also the name of half the npm scripts in
+# existence, so it only counts as the first word of a command. npm start must not
+# read as one. Windows only, since POSIX has no start, and a trailing & is the
+# other way round: it backgrounds on POSIX and is only a separator in cmd, where
+# warning about it would be wrong.
+LEADING = ("start",) if WINDOWS else ()
+
+# Asking a command what its flags are never backgrounds anything.
+NO_DETACH = ("--help", "-h", "--version", "-v")
+
 # How much of a running job's output we hold on to. Bigger than MAX_OUTPUT
 # because it is read in pieces, a poll at a time.
 MAX_BUFFER = 200000
 
 # Running jobs allowed at once. The oldest is killed to make room, so a model
-# that forgets to poll cannot fill the machine with processes.
-MAX_JOBS = 8
+# that forgets to poll cannot fill the machine with processes. High enough that
+# hitting it means something has gone wrong rather than that the work is busy:
+# the cost of a parked job is two reader threads and its buffer, not CPU.
+MAX_JOBS = 32
 
 # How long a finished job stays readable after its completion was reported.
 FINISHED_TTL = 600
@@ -174,7 +215,8 @@ def run_description():
         )
         venv = ".venv/bin/python"
     return (
-        "Run a shell command and return its output, stdout and stderr both. "
+        "Run a shell command and return its output: stdout and stderr "
+        "together, in the order the command wrote them. "
         + dialect
         + "Every call is a fresh shell, so a cd, a variable or an export does "
         "not carry over to the next one: chain related steps into a single "
@@ -184,9 +226,17 @@ def run_description():
         "since the command has no input; pass the flag that skips it, such as "
         "-y. For more Python than fits on one line, write it to a file with "
         "the write tool and run that file, rather than passing source to -c. "
+        "Output too long to send is trimmed in the middle, with the whole of "
+        "it kept in a file whose path is named at the cut, so never pipe a "
+        "command through head or tail to shorten it: that throws away what "
+        "you cannot then go back for. "
         f"A command still running after {YIELD_SECONDS} seconds keeps going in "
         "the background and returns a session id instead of a result; read it "
-        "with poll."
+        "with poll. Waiting costs you nothing, since a command that finishes "
+        "sooner returns the moment it does, so do not set a small timeout to "
+        f"hurry a long build along. A job is killed if it goes {IDLE_TIMEOUT} "
+        "seconds without printing anything, which is what catches a command "
+        "stuck waiting for input."
     )
 
 
@@ -207,7 +257,10 @@ RUN_TOOL = {
                     "description": (
                         f"Seconds the command may run in total, in the "
                         f"background included, before it is killed. Defaults "
-                        f"to {DEFAULT_TIMEOUT}."
+                        f"to {DEFAULT_TIMEOUT}, at most {MAX_TIMEOUT}. A "
+                        f"ceiling, not a wait: the call returns as soon as the "
+                        f"command finishes, so leave it alone unless you know "
+                        f"the command needs longer."
                     ),
                 },
                 "workdir": {
@@ -323,36 +376,186 @@ def environment():
     )
 
 
-def shorten(text):
-    """Trim text to MAX_OUTPUT, keeping the head and the tail."""
+def shorten(text, path=None):
+    """Trim text to MAX_OUTPUT, keeping the head and the tail.
+
+    The marker goes where the loss is rather than at the end, so output that
+    was cut cannot read as output that finished. When the whole of it was kept
+    on disk, the marker says where, at the point the model needs it.
+    """
     if len(text) <= MAX_OUTPUT:
         return text
     head = int(MAX_OUTPUT * HEAD_SHARE)
     tail = MAX_OUTPUT - head
     dropped = len(text) - MAX_OUTPUT
+    marker = f"... {dropped} characters omitted out of {len(text)} total"
+    if path:
+        marker += f"; all of it is in {path}, which read can page through"
+    return text[:head] + f"\n\n{marker} ...\n\n" + text[-tail:]
+
+
+def spill_dir():
+    """The folder the full logs go in, created if it is not there."""
+    path = os.path.join(tempfile.gettempdir(), SPILL_DIR)
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def prune_spills(directory):
+    """Drop logs old enough that nothing is going to read them."""
+    cutoff = time.time() - SPILL_TTL
+    for name in os.listdir(directory):
+        old = os.path.join(directory, name)
+        try:
+            if os.path.getmtime(old) < cutoff:
+                os.remove(old)
+        except OSError:
+            pass
+
+
+def spill(text):
+    """Keep the whole output on disk and return its path, or None if we cannot."""
+    try:
+        directory = spill_dir()
+        prune_spills(directory)
+        handle, path = tempfile.mkstemp(prefix="run-", suffix=".log", dir=directory)
+        with os.fdopen(handle, "w", encoding="utf-8", newline="\n") as f:
+            f.write(text)
+        return path
+    except OSError:
+        # A full or read-only temp folder is not a reason to fail the command;
+        # trimming without a path is what happened before there was one.
+        return None
+
+
+def capped(text):
+    """What the model sees of an output, with the rest of it left on disk."""
+    if len(text) <= MAX_OUTPUT:
+        return text
+    return shorten(text, spill(text))
+
+
+def dropped(count):
+    """The marker for output that was lost before anyone read it."""
     return (
-        text[:head]
-        + f"\n\n... {dropped} characters omitted out of {len(text)} total ...\n\n"
-        + text[-tail:]
+        f"... {count} characters of output were dropped here: the command "
+        f"produced more than {MAX_BUFFER} characters between polls. Redirect "
+        "it to a file and read that if you need all of it ...\n"
     )
 
 
-def report(out, err, returncode=None, note=None):
+# What a non-zero exit usually means. A model told only the number spends a
+# turn working out whether the command failed or answered, and gets 137 wrong
+# every time.
+EXIT_CODES = {
+    1: "a general error",
+    2: "the command was used wrongly, often a bad option or a missing argument",
+    126: "the file was found but could not be run",
+    127: "command not found: it is not installed, or not on PATH",
+    130: "interrupted, SIGINT",
+    134: "aborted, SIGABRT, usually an assertion or a panic",
+    137: (
+        "killed, SIGKILL. On a build, a test run or anything holding a lot of "
+        "data this is almost always the machine running out of memory, not a "
+        "bug in the command"
+    ),
+    139: "a segmentation fault",
+    143: "terminated, SIGTERM",
+}
+
+# Where the number means something else, or means nothing wrong at all. A model
+# that reads grep's 1 as a failure retries it, then doubts the file.
+BY_PROGRAM = {
+    "grep": {1: "no lines matched, which is an answer and not a failure"},
+    "rg": {1: "no lines matched, which is an answer and not a failure"},
+    "findstr": {1: "no lines matched, which is an answer and not a failure"},
+    "ag": {1: "no lines matched, which is an answer and not a failure"},
+    "diff": {1: "the files differ, which is an answer and not a failure"},
+    "cmp": {1: "the files differ, which is an answer and not a failure"},
+    "fc": {1: "the files differ, which is an answer and not a failure"},
+    "git": {
+        1: (
+            "for diff --exit-code or grep, that there was a difference or no "
+            "match, which is an answer; otherwise an error, and the message "
+            "above says which"
+        )
+    },
+    "pytest": {
+        1: "tests failed, which the output above lists",
+        2: "the run was interrupted",
+        3: "an internal error",
+        4: "the command line was wrong",
+        5: "no tests were collected, so check the path and the file names",
+    },
+    "curl": {
+        6: "could not resolve the host",
+        7: "could not connect to the host",
+        22: "the server returned an HTTP error",
+        28: "the request timed out",
+    },
+    "wget": {4: "a network failure", 8: "the server returned an error"},
+    "npm": {1: "the script it ran failed; its own output is above"},
+    "pip": {1: "the install failed; the reason is in the output above"},
+    "test": {1: "the condition was false"},
+    "mypy": {1: "type errors were found, which is an answer and not a failure"},
+    "ruff": {1: "problems were found, which is an answer and not a failure"},
+}
+
+# Words that stand in front of the command that actually ran.
+RUNNERS = {"python", "python3", "py", "uv", "uvx", "npx", "poetry", "pipx", "pdm"}
+STEPS = {"run", "exec", "m"}
+
+
+def program(command):
+    """The name of the thing that ran, for reading its exit code by."""
+    for part in command.strip().split():
+        name = os.path.splitext(os.path.basename(part.strip("\"'")))[0].lower()
+        if name in RUNNERS or name in STEPS or name.startswith("-"):
+            continue
+        return name
+    return ""
+
+
+def explain(command, code):
+    """What this exit code probably means, in a few words, or None."""
+    if not code:
+        return None
+    meaning = BY_PROGRAM.get(program(command), {}).get(code)
+    if meaning:
+        return meaning
+    if code < 0:
+        # Popen reports a signal as its negative on POSIX, so this one is not a
+        # guess the way 128 + n below is.
+        return f"killed by signal {-code}"
+    meaning = EXIT_CODES.get(code)
+    if meaning:
+        return meaning
+    if 128 < code < 192:
+        return f"probably killed by signal {code - 128}"
+    return None
+
+
+# What a command that exited cleanly with both pipes empty reports. It cannot
+# be the empty string: a tool message with no content reads to the model as a
+# broken tool rather than a quiet success, and some servers refuse to accept
+# one at all. Short because it is also what the transcript shows.
+NO_OUTPUT = "No output."
+
+
+def report(out, returncode=None, note=None, command=""):
     """Assemble what the model sees from one run."""
     parts = []
     out = (out or "").strip()
-    err = (err or "").strip()
     if out:
         parts.append(out)
-    if err:
-        parts.append(f"stderr:\n{err}")
     if returncode:
-        parts.append(f"Exit code: {returncode}")
+        meaning = explain(command, returncode)
+        parts.append(f"Exit code: {returncode}" + (f" ({meaning})" if meaning else ""))
     if note:
         parts.append(note)
     if not parts:
-        return "The command produced no output."
-    return shorten("\n".join(parts))
+        return NO_OUTPUT
+    return capped("\n".join(parts))
 
 
 class Stream:
@@ -383,6 +586,9 @@ class Stream:
         return text, missed
 
     def all(self):
+        """The whole buffer, with anything lost off the front said so."""
+        if self.base:
+            return dropped(self.base) + self.text
         return self.text
 
 
@@ -395,17 +601,15 @@ class Job:
         self.command = command
         self.timeout = timeout
         self.started = time.monotonic()
+        self.spoke = self.started  # when it last produced output
         self.finished_at = None
         self.killed = False
         self.expired = False  # killed for running past its timeout
+        self.stalled = False  # killed for going quiet
         self.reported = False  # has the model been told it finished
         self.lock = threading.Lock()
         self.out = Stream()
-        self.err = Stream()
-        self.readers = [
-            self.reader(process.stdout, self.out),
-            self.reader(process.stderr, self.err),
-        ]
+        self.readers = [self.reader(process.stdout, self.out)]
 
     def reader(self, pipe, stream):
         def pump():
@@ -413,6 +617,7 @@ class Job:
                 for line in iter(pipe.readline, b""):
                     with self.lock:
                         stream.write(decode(line))
+                        self.spoke = time.monotonic()
             except Exception:
                 pass
             finally:
@@ -430,6 +635,11 @@ class Job:
 
     def age(self):
         return time.monotonic() - self.started
+
+    def idle(self):
+        """Seconds since it last said anything."""
+        with self.lock:
+            return time.monotonic() - self.spoke
 
     def drain(self, seconds=5):
         """Give the readers a moment to finish before we read their buffers.
@@ -470,23 +680,37 @@ class Job:
     def status(self):
         if self.running():
             return f"still running after {int(self.age())} seconds"
+        # The two deaths get different wording because they need different
+        # fixes: one is worth retrying with more room, the other never is.
+        if self.stalled:
+            return (
+                f"produced no output for {IDLE_TIMEOUT} seconds and was killed. "
+                "If it was waiting for input it cannot get any here, so pass "
+                "the flag that skips the prompt rather than retrying as is"
+            )
         if self.expired:
-            return f"was killed after running past its {self.timeout} second limit"
+            return (
+                f"was killed after running past its {self.timeout} second "
+                "limit. It was still producing output, so retry with a larger "
+                "timeout if it was genuinely still working"
+            )
         if self.killed:
             return "was stopped"
-        return f"finished with exit code {self.process.returncode}"
+        code = self.process.returncode
+        meaning = explain(self.command, code)
+        return f"finished with exit code {code}" + (f" ({meaning})" if meaning else "")
 
     def news(self):
         """Output since the last read, as text."""
         with self.lock:
-            out, out_missed = self.out.take()
-            err, err_missed = self.err.take()
-        missed = out_missed + err_missed
-        note = None
+            out, missed = self.out.take()
         if missed:
-            note = f"{missed} characters of earlier output were dropped."
-        text = report(out, err, note=note)
-        return "" if text == "The command produced no output." else text
+            # In front of the output rather than after it, so a diagnostic that
+            # lost its beginning cannot read as one that has all of it.
+            out = dropped(missed) + out
+        text = report(out)
+        # poll words this itself, so hand back nothing rather than "No output."
+        return "" if text == NO_OUTPUT else text
 
 
 registry = {}
@@ -502,7 +726,12 @@ def sweep():
             jobs = list(registry.values())
         for job in jobs:
             if job.running():
-                if job.age() > job.timeout:
+                # Quiet first, since that is the usual reason a job is over:
+                # the ceiling is only there for one that never stops talking.
+                if job.idle() > IDLE_TIMEOUT:
+                    job.stalled = True
+                    job.kill()
+                elif job.age() > job.timeout:
                     job.expired = True
                     job.kill()
                 continue
@@ -532,14 +761,23 @@ def new_id():
 
 
 def register(job):
+    """Add job to the registry, killing the oldest running ones if it is full.
+
+    Returns the ids it had to kill, so run() can say so in its own result.
+    Otherwise the model only finds out from notes() on its next message, which
+    is a message too late to be told the build it is waiting on is gone.
+    """
+    evicted = []
     with registry_lock:
         running = [j for j in registry.values() if j.running()]
         while len(running) >= MAX_JOBS:
             oldest = min(running, key=lambda j: j.started)
             oldest.kill()
             running.remove(oldest)
+            evicted.append(oldest.id)
         registry[job.id] = job
     start_sweeper()
+    return evicted
 
 
 def find(session_id):
@@ -654,11 +892,84 @@ def spawn(command, workdir):
         command,
         shell=True,
         stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        # One pipe for both, merged by the kernel in the order the process
+        # actually wrote them. Two pipes and two reader threads can only
+        # reconstruct the order the reader happened to get there, which is not
+        # the same thing. And the split it buys is worth less than it looks:
+        # pytest, git, pip, npm, every progress bar and most compilers write
+        # ordinary output to stderr, so a separate stderr block regularly holds
+        # nothing wrong while reading to the model as an error, and the real
+        # failure sits somewhere in a chatty stdout with no sign of when it
+        # happened relative to the rest.
+        stderr=subprocess.STDOUT,
         stdin=subprocess.DEVNULL,
         env=env,
         cwd=workdir,
         **kwargs,
+    )
+
+
+def unquoted(command):
+    """The command with quoted text removed, for looking at its structure.
+
+    A keyword inside a string is not the command doing that thing, and
+    `echo "starting the server &"` must not read as a backgrounded command.
+    Structure only, so the result is never run.
+    """
+    return re.sub(r"\"[^\"]*\"|'[^']*'", " ", command)
+
+
+def word(part):
+    """One token of a command reduced to the name of the program it names."""
+    return os.path.splitext(os.path.basename(part.strip("\"'")))[0]
+
+
+def named(low):
+    """The detaching program this command names, or None.
+
+    Each segment is looked at on its own, since what matters for LEADING is
+    whether the word is the command being run or an argument to one.
+    """
+    for segment in re.split(r"&&|\|\||[&|;]", low):
+        parts = segment.split()
+        if not parts:
+            continue
+        if word(parts[0]) in LEADING:
+            return word(parts[0])
+        for part in parts:
+            if word(part) in DETACHERS:
+                return word(part)
+    return None
+
+
+def detached(command):
+    """Why this command puts a process out of reach, or None.
+
+    Reported rather than refused. A model backgrounds a server because it wants
+    the shell back, which is the one thing it does not need to do here: run
+    already hands the turn back after YIELD_SECONDS and keeps the process as a
+    session poll can read and kill_all() can stop. A detached one is a process
+    nobody can see and nobody will clean up.
+    """
+    bare = unquoted(command)
+    low = bare.lower()
+    if any(flag in low.split() for flag in NO_DETACH):
+        return None
+    # A trailing & backgrounds on POSIX. && is a separator, and one at the end
+    # is a syntax error rather than something we need to allow for.
+    if not WINDOWS and re.search(r"(?<!&)&\s*$", bare.rstrip()):
+        found = "a trailing &"
+    else:
+        found = named(low)
+    if not found:
+        return None
+    return (
+        f"Warning: this command backgrounds a process itself ({found}), which "
+        "puts it outside VOLlama's reach: it is not a session poll can read, it "
+        "is not killed on New Chat or when VOLlama closes, and its output is "
+        "lost. Run it in the foreground instead. A command still going after "
+        f"{YIELD_SECONDS} seconds is backgrounded for you, as a session, which "
+        "is what you wanted."
     )
 
 
@@ -700,12 +1011,12 @@ def run(command, timeout=DEFAULT_TIMEOUT, workdir=None):
         with job.lock:
             return report(
                 job.out.all(),
-                job.err.all(),
                 None,
                 note="Stopped: the user stopped generation while this was running.",
+                command=command,
             )
     if job.running():
-        register(job)
+        evicted = register(job)
         news = job.news()
         return "\n".join(
             filter(
@@ -713,8 +1024,11 @@ def run(command, timeout=DEFAULT_TIMEOUT, workdir=None):
                 [
                     f"Still running after {YIELD_SECONDS} seconds, so it was "
                     f"left going in the background. Session: {job.id}",
-                    "Read it with poll. It will be killed after "
-                    f"{timeout} seconds in total.",
+                    "Read it with poll. It will be killed if it goes "
+                    f"{IDLE_TIMEOUT} seconds without producing any output, or "
+                    f"after {timeout} seconds in total.",
+                    eviction(evicted),
+                    detached(command),
                     f"Output so far:\n{news}" if news else None,
                 ],
             )
@@ -723,7 +1037,30 @@ def run(command, timeout=DEFAULT_TIMEOUT, workdir=None):
     job.settle()
     job.drain()
     with job.lock:
-        return report(job.out.all(), job.err.all(), process.returncode)
+        # A detached command is the commonest reason one returns instantly, so
+        # the warning belongs here most of all.
+        return report(
+            job.out.all(),
+            process.returncode,
+            note=detached(command),
+            command=command,
+        )
+
+
+def eviction(evicted):
+    """What to say about the jobs that were killed to make room for this one."""
+    if not evicted:
+        return None
+    killed = ", ".join(evicted)
+    if len(evicted) == 1:
+        return (
+            f"{MAX_JOBS} commands were already in the background, so {killed} "
+            "was killed to make room. Its output is still there to poll."
+        )
+    return (
+        f"{MAX_JOBS} commands were already in the background, so {killed} were "
+        "killed to make room. Their output is still there to poll."
+    )
 
 
 def listing():
@@ -769,7 +1106,9 @@ def poll(session_id=None, wait=0, kill=False):
     head = f"{job.id} {job.status()}."
     if not news:
         return head + " No new output."
-    return shorten(f"{head}\n{news}")
+    # news has been through report already, so trimming again here would only
+    # cut the middle out a second time and take the spilled log's path with it.
+    return f"{head}\n{news}"
 
 
 FUNCTIONS = dict({"run": run, "poll": poll}, **Files.FUNCTIONS)

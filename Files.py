@@ -16,8 +16,10 @@ file exactly as it was.
 """
 
 import difflib
+import json
 import os
 import re
+import unicodedata
 
 from Settings import settings
 
@@ -45,6 +47,21 @@ SUGGESTIONS = 3
 CLOSE_ENOUGH = 0.3
 SNIPPET_LINES = 20
 SEARCH_LINES = 20000
+
+# How many places an ambiguous old_text is shown at, and how much of each line.
+# A bare count leaves the model to find them itself, which it does by reading
+# the file again and sending the same edit.
+SITES = 5
+SITE_WIDTH = 120
+
+# Paths that are not files even though they parse as one. Writing to a Windows
+# reserved name talks to a device instead of the disk and reports success, and
+# a character device under /dev never ends.
+DEVICES = (
+    {"con", "prn", "aux", "nul"}
+    | {f"com{n}" for n in range(1, 10)}
+    | {f"lpt{n}" for n in range(1, 10)}
+)
 
 
 def working_dir():
@@ -183,15 +200,52 @@ def save(path, text, newline, bom=""):
         f.write(bom + text)
 
 
+def device(full):
+    """Whether this path names a device rather than a file on disk.
+
+    Each platform's rule only applies on that platform. /dev is a folder name
+    like any other on Windows, where C:\\dev is where a good many people keep
+    their code, and nul is an ordinary filename on Linux.
+    """
+    if os.name == "nt":
+        # con.txt is the console too, so the extension comes off first.
+        return os.path.basename(full).split(".")[0].lower() in DEVICES
+    return full.startswith("/dev/")
+
+
+def suggest(full):
+    """Names in the same folder close to the one asked for, as a sentence.
+
+    A path that is wrong is usually wrong by a character or a plural, and the
+    answer is sitting in the same directory listing we already have to touch to
+    know the file is missing.
+    """
+    parent = os.path.dirname(full) or "."
+    try:
+        names = os.listdir(parent)
+    except OSError:
+        return ""
+    close = difflib.get_close_matches(os.path.basename(full), names, n=3, cutoff=0.6)
+    if not close:
+        return ""
+    return " Did you mean " + ", ".join(close) + "?"
+
+
 def checked(path, must_exist=True):
     """Turn a path into one we can act on, or say why we cannot."""
     full = resolve(path)
+    if device(full):
+        raise ValueError(
+            f"{full} is a device, not a file. Reading one may never return and "
+            "writing one throws the text away, so it is refused here. Use run "
+            "if you really mean the device."
+        )
     if os.path.isdir(full):
         raise ValueError(f"{full} is a directory, not a file.")
     if must_exist and not os.path.exists(full):
         raise ValueError(
             f"There is no file at {full}. Relative paths are taken from "
-            f"{working_dir()}."
+            f"{working_dir()}.{suggest(full)}"
         )
     return full
 
@@ -338,9 +392,100 @@ def introduced(path, before, after):
     return problem
 
 
+# Content that says the rest of the file goes here instead of containing it.
+# write replaces the whole file, so a model that abbreviates one destroys it, and
+# the damage is silent: the write succeeds and the missing code is only noticed
+# when something else fails to import it. This is gemini-cli's detector.
+#
+# The phrases have to be a closed set, and the line has to be a comment with an
+# ellipsis in it, or print("...") and a docstring that happens to mention
+# unchanged code become refused writes.
+OMISSIONS = (
+    "rest of the code",
+    "rest of code",
+    "rest of the file",
+    "rest of file",
+    "rest of the function",
+    "rest of the class",
+    "rest of the method",
+    "rest of the implementation",
+    "rest remains",
+    "rest unchanged",
+    "unchanged",
+    "code unchanged",
+    "existing code",
+    "existing implementation",
+    "previous code",
+    "keep existing",
+    "same as before",
+    "no changes",
+    "omitted for brevity",
+    "truncated for brevity",
+    "as before",
+    "and so on",
+)
+
+# The markers that make a line a comment, in the languages this tool writes.
+COMMENTS = ("<!--", "-->", "/*", "*/", "//", "--", "#", ";", "%", "*")
+
+ELLIPSES = ("...", "\u2026")
+
+
+def commentary(line):
+    """The words of a comment line, or None if it is not one.
+
+    Only comments are looked at, because that is what makes the check safe: a
+    placeholder is a note to the reader, and a string containing the same words
+    is data the file is supposed to have.
+    """
+    line = line.strip()
+    marked = False
+    changed = True
+    while changed:
+        changed = False
+        for mark in COMMENTS:
+            if line.startswith(mark):
+                line, marked, changed = line[len(mark):].strip(), True, True
+            if line.endswith(mark):
+                line, marked, changed = line[: -len(mark)].strip(), True, True
+    return line if marked else None
+
+
+def placeholder(content):
+    """Where this content says the rest of the file goes, as (line number, line).
+
+    Named rather than just refused, since the model has to find the line to fix
+    it and a file long enough to be abbreviated is long enough to search.
+    """
+    for number, line in enumerate(content.split("\n"), 1):
+        words = commentary(line)
+        if not words or not any(dots in words for dots in ELLIPSES):
+            continue
+        for dots in ELLIPSES:
+            words = words.replace(dots, " ")
+        # What is left once the ellipsis and the punctuation are gone. A bare
+        # `# ...` says nothing about the rest of the file and is left alone.
+        words = " ".join(words.lower().strip(" \t.,:;!-_()[]{}<>").split())
+        if words and any(phrase in words for phrase in OMISSIONS):
+            return number, line.strip()
+    return None
+
+
 def write(path, content):
     """Create or replace a file with exactly the text given."""
     content = (content or "").replace("\r\n", "\n")
+    # Before the path is even resolved: this content is not a file, whatever it
+    # was going to be written to.
+    left = placeholder(content)
+    if left:
+        return (
+            f"Nothing was written, because line {left[0]} of the content says "
+            f"the rest of the file goes there rather than containing it:\n"
+            f"  {left[1]}\n"
+            "write replaces the whole file, so this would delete everything the "
+            "line stands for. Send the file complete, or use edit to change only "
+            "the parts that differ."
+        )
     try:
         full = checked(path, must_exist=False)
         existed = os.path.exists(full)
@@ -394,6 +539,160 @@ def visible(text):
     return text.replace("\t", "→").replace(" ", "·")
 
 
+# Characters a model writes as something else, or that it cannot see at all.
+# A file that has been through a word processor, a web page, a chat client or
+# another model's output is full of them: a curly quote where the source had a
+# straight one, an en dash for a hyphen, a zero-width space left over from
+# copied HTML. NFKC handles the non-breaking and full width families and the
+# ellipsis; these are the ones it deliberately leaves alone.
+FOLDED = {
+    "‘": "'", "’": "'", "‚": "'", "‛": "'", "′": "'",
+    "“": '"', "”": '"', "„": '"', "‟": '"', "″": '"',
+    "‐": "-", "‑": "-", "‒": "-", "–": "-", "—": "-",
+    "―": "-", "−": "-",
+    # Invisible, so a mismatch caused by one is a mismatch with nothing in the
+    # error to explain it. Dropped rather than folded.
+    "​": "", "‌": "", "‍": "", "⁠": "", "­": "",
+    "﻿": "",
+}
+
+# Tabs and spaces are deliberately not made equivalent. Folding them would let
+# an old_text indented with spaces match a file indented with tabs, and since
+# new_text is written exactly as sent, the file would come back with its
+# indentation quietly mixed. Trailing whitespace is dropped, which has no such
+# hazard: it is invisible and carries no meaning.
+
+
+def fold(text):
+    """The text with confusable characters folded, and a map back to it.
+
+    Every character of the result comes from exactly one character of the
+    input, and the map records which, so a match found in here can be handed
+    back in the original text's own coordinates. That is what makes this safe:
+    the fold is only ever used to find the place, and the file's own characters
+    are what gets edited.
+
+    One input character may fold to none or to several, never the reverse, so
+    the map stays in order and a span end can always be looked up. A span that
+    starts or ends inside one character's expansion is caught by the caller
+    re-folding what it found.
+    """
+    out = []
+    index = []
+    pending = []  # whitespace held back until we know it is not trailing
+    for i, ch in enumerate(text):
+        for c in FOLDED.get(ch, unicodedata.normalize("NFKC", ch)):
+            if c in " \t":
+                pending.append((i, c))
+            elif c == "\n":
+                pending = []
+                out.append(c)
+                index.append(i)
+            else:
+                for j, held in pending:
+                    out.append(held)
+                    index.append(j)
+                pending = []
+                out.append(c)
+                index.append(i)
+    index.append(len(text))  # so the end of a match at the end still maps
+    return "".join(out), index
+
+
+def fold_match(text, old):
+    """Where old goes when the only difference is a character it cannot see.
+
+    Lookup only. Each span comes back as offsets into the original text and is
+    verified by folding the original slice again, so an unclear mapping refuses
+    the whole edit instead of applying it to a guess.
+    """
+    needle, _ = fold(old)
+    if not needle.strip():
+        return []
+    hay, index = fold(text)
+    if hay == text and needle == old:
+        # Nothing was folded on either side, so this is the exact match that
+        # has already failed.
+        return []
+    spans = []
+    for at in occurrences(hay, needle):
+        start, end = index[at], index[at + len(needle)]
+        if end <= start or fold(text[start:end])[0] != needle:
+            return []
+        spans.append((start, end))
+    return spans
+
+
+class NotFound(ValueError):
+    """An old_text that matched nothing, as opposed to one that matched too much."""
+
+
+def applied(text, new):
+    """Whether this edit's new_text is already in the file, exactly once.
+
+    Re-sending an edit that has already landed is the commonest way a batch
+    fails, and failing it is wrong twice: the file is already what was asked
+    for, and the model's next move is to read the file and send the same edit
+    again. Uniqueness is the guard against reading a coincidence as a landed
+    edit, and it is a strong one: a fragment long enough to be somebody's
+    new_text appears once or not at all.
+    """
+    new = (new or "").strip()
+    return bool(new) and len(occurrences(text, new)) == 1
+
+
+def ambiguous(text, found, where, path):
+    """Why an old_text matching several places was refused, and where they are."""
+    sites = []
+    for start, _ in found[:SITES]:
+        line = text.count("\n", 0, start) + 1
+        first = text[start:].split("\n", 1)[0].strip()
+        sites.append(f"  line {line}: {first[:SITE_WIDTH]}")
+    if len(found) > SITES:
+        sites.append(f"  ... and {len(found) - SITES} more")
+    return (
+        f"Found {len(found)} occurrences of {where} in {path}, so it is not "
+        "clear which one you meant. Nothing was changed. They start at:\n"
+        + "\n".join(sites)
+        + "\nInclude more of the surrounding lines to pick one of them out, or "
+        "set replace_all to true to change every one."
+    )
+
+
+def edits_of(edits):
+    """The list of edits, out of the shapes a model actually sends.
+
+    The array arriving as a JSON string, one edit as a bare object, the whole
+    thing wrapped in a second edits key: each is unambiguous, so reading it is
+    better than spending a turn on the shape of the argument.
+    """
+    for _ in range(3):
+        if isinstance(edits, str):
+            try:
+                edits = json.loads(edits)
+            except ValueError:
+                return None
+            continue
+        if isinstance(edits, dict):
+            inner = edits.get("edits")
+            if inner is not None and "old_text" not in edits:
+                edits = inner
+                continue
+            edits = [edits]
+        break
+    if not isinstance(edits, list) or not edits:
+        return None
+    unpacked = []
+    for item in edits:
+        if isinstance(item, str):
+            try:
+                item = json.loads(item)
+            except ValueError:
+                pass
+        unpacked.append(item)
+    return unpacked
+
+
 def nearest(text, old):
     """The places in text that most look like old, closest first.
 
@@ -439,6 +738,107 @@ def nearest(text, old):
     return [(start + 1, window) for _, start, window in picked]
 
 
+def indent_of(line):
+    """How the line is indented, as a count of spaces and of tabs."""
+    lead = line[: len(line) - len(line.lstrip(" \t"))]
+    return lead.count(" "), lead.count("\t")
+
+
+def spell(spaces, tabs):
+    """A count of spaces and tabs in words, since the characters do not show."""
+    parts = []
+    if spaces:
+        parts.append(count_of(spaces, "space", "spaces"))
+    if tabs:
+        parts.append(count_of(tabs, "tab", "tabs"))
+    return " and ".join(parts) or "nothing"
+
+
+def count_of(n, one, many):
+    """A count with its noun, singular when it should be."""
+    return f"{n} {one if n == 1 else many}"
+
+
+def column(mine, theirs):
+    """The 1-based column where these two lines first differ."""
+    for at, (a, b) in enumerate(zip(mine, theirs)):
+        if a != b:
+            return at + 1
+    return min(len(mine), len(theirs)) + 1
+
+
+def diverges(sent, found):
+    """The first line of these two blocks that is not the same, as a pair."""
+    mine = sent.strip("\n").split("\n")
+    theirs = found.strip("\n").split("\n")
+    for pair in zip(mine, theirs):
+        if pair[0] != pair[1]:
+            return pair
+    return None
+
+
+def kind(mine, theirs):
+    """What sort of difference this is, named, in openclaw's order.
+
+    Naming it is the whole point. "It must match exactly" tells a model what the
+    rule is, which it already knew; the reason its text did not match is a fact
+    about these two lines, and indentation and escaping are the two it cannot
+    see by reading either one of them again.
+    """
+    if mine.strip() == theirs.strip():
+        want, have = indent_of(mine), indent_of(theirs)
+        if want != have:
+            return (
+                f"the indentation differs: you sent {spell(*want)}, the file "
+                f"has {spell(*have)}"
+            )
+        return "the difference is whitespace inside the line or at the end of it"
+    slash = "\\"
+    # Only when the backslashes are the whole of the difference. Two unrelated
+    # lines usually differ in backslash count too, and calling that an escaping
+    # problem sends the model after something that is not wrong.
+    if mine.replace(slash, "") == theirs.replace(slash, ""):
+        return (
+            "the escaping differs: you sent "
+            f"{count_of(mine.count(slash), 'backslash', 'backslashes')}, the "
+            f"file has {theirs.count(slash)}"
+        )
+    return f"they first differ at column {column(mine, theirs)}"
+
+
+def divergence(sent, found):
+    """The first difference between what was sent and the closest thing found."""
+    pair = diverges(sent, found)
+    if pair is None:
+        return [
+            "",
+            "Every line you sent matches one of those; the difference is in how "
+            "many lines there are or in the lines around them.",
+        ]
+    mine, theirs = pair
+    named = kind(mine, theirs)
+    if "whitespace" in named or "indentation" in named:
+        # Shown with the whitespace made visible, or the two lines print the
+        # same and the error reads as though there is no difference at all.
+        return [
+            "",
+            f"The first line that differs: {named}. Shown with \u2192 for a tab "
+            "and \u00b7 for a space.",
+            "You sent:      " + visible(mine[:MAX_DIFF]),
+            "The file has:  " + visible(theirs[:MAX_DIFF]),
+        ]
+    lines = [
+        "",
+        f"The first line that differs: {named}.",
+        "You sent:      " + mine[:MAX_DIFF],
+        "The file has:  " + theirs[:MAX_DIFF],
+    ]
+    at = column(mine, theirs)
+    if at <= MAX_DIFF:
+        lines.append(" " * (len("The file has:  ") + at - 1) + "^")
+    return lines
+
+
 def no_match(text, old, where, path):
     """Why an old_text did not match, and what in the file came closest to it."""
     message = (
@@ -458,7 +858,9 @@ def no_match(text, old, where, path):
         parts.append(window)
 
     top = close[0][1]
-    if top != old and " ".join(top.split()) == " ".join(old.split()):
+    if top == old:
+        return "\n".join(parts)
+    if " ".join(top.split()) == " ".join(old.split()):
         # The whole difference is whitespace, which is exactly the difference a
         # model cannot see in its own output or in the file it was given.
         parts += [
@@ -470,6 +872,8 @@ def no_match(text, old, where, path):
             "The file has:",
             visible(top[:MAX_DIFF]),
         ]
+    else:
+        parts += divergence(old, top)
     return "\n".join(parts)
 
 
@@ -481,43 +885,65 @@ def label(index, count):
 def locate(text, old, index, count, path, every=False):
     """Where one edit goes, or why it does not go anywhere.
 
-    Returns the positions, the text that actually matched, and whether it only
-    matched after its escaping was undone.
+    Returns the spans as (start, end) offsets into text, and how they were
+    found: None for an exact match, or the name of the one fallback that had to
+    be used.
 
-    Both failures are reported before anything is written, since an edit that
-    matched three places is a model that does not know which one it meant, and
-    guessing for it is how a file quietly ends up wrong. Unless it said so:
-    replace_all is that model saying it meant all of them.
+    Exact first, always. The fallbacks are tried in the order of how sure they
+    are, they are lookup only, and each is named in the result so the model
+    learns what it got wrong. Both failures are reported before anything is
+    written, since an edit that matched three places is a model that does not
+    know which one it meant, and guessing for it is how a file quietly ends up
+    wrong. Unless it said so: replace_all is that model saying it meant all of
+    them.
     """
     where = label(index, count)
     if not old:
         raise ValueError(f"{where} is empty. It must be the text you want replaced.")
+    if not old.strip():
+        raise ValueError(
+            f"{where} is nothing but whitespace, which cannot say which part of "
+            f"{path} you mean. Include the line you want changed."
+        )
 
-    found = occurrences(text, old)
-    repaired = False
+    how = None
+    found = [(at, at + len(old)) for at in occurrences(text, old)]
     if not found:
         plain = unescape(old)
         if plain != old:
-            found = occurrences(text, plain)
+            found = [(at, at + len(plain)) for at in occurrences(text, plain)]
             if found:
-                old, repaired = plain, True
+                how = "escape"
     if not found:
-        raise ValueError(no_match(text, old, where, path))
+        found = fold_match(text, old)
+        if found:
+            how = "unicode"
+    if not found:
+        raise NotFound(no_match(text, old, where, path))
     if len(found) > 1 and not every:
-        raise ValueError(
-            f"Found {len(found)} occurrences of {where} in {path}, so it is not "
-            "clear which one you meant. Nothing was changed. Include more of the "
-            "surrounding lines to make it unique, or set replace_all to true to "
-            "change every one of them."
-        )
-    return found, old, repaired
+        raise ValueError(ambiguous(text, found, where, path))
+    return found, how
+
+
+REPAIRS = {
+    "escape": (
+        "only matched once its escaping was undone: you sent a backslash and an "
+        "n where the file has a line break. Send the text as it is, not as it "
+        "would look inside a Python string."
+    ),
+    "unicode": (
+        "only matched once characters you cannot see were folded: a curly quote, "
+        "a dash, a zero-width space or whitespace at the end of a line, written "
+        "differently from the file. The file's own characters were kept "
+        "everywhere you did not replace them."
+    ),
+}
 
 
 def edit(path, edits):
     """Replace unique pieces of a file, all of them or none of them."""
-    if isinstance(edits, dict):
-        edits = [edits]
-    if not isinstance(edits, list) or not edits:
+    edits = edits_of(edits)
+    if edits is None:
         return "edits must be a list of {old_text, new_text} objects."
 
     try:
@@ -529,7 +955,8 @@ def edit(path, edits):
     # Located against the original text, never against the result of the edit
     # before, so the model does not have to imagine the file part way through.
     spans = []
-    repaired = 0
+    repairs = {}
+    already = []
     try:
         for i, item in enumerate(edits):
             if not isinstance(item, dict):
@@ -546,12 +973,29 @@ def edit(path, edits):
                     f"{name} has the same new_text as old_text, so it would not "
                     "change anything. Nothing was written."
                 )
-            found, old, fixed = locate(before, old, i, len(edits), full, every)
-            repaired += bool(fixed)
-            for at in found:
-                spans.append((at, at + len(old), new, i))
+            try:
+                found, how = locate(before, old, i, len(edits), full, every)
+            except NotFound:
+                # The old text is gone and the new text is already there, once:
+                # this edit has already been made. Reporting that as a failure
+                # sends the model round the same loop again.
+                if applied(before, new):
+                    already.append(i)
+                    continue
+                raise
+            if how:
+                repairs[how] = repairs.get(how, 0) + 1
+            for start, end in found:
+                spans.append((start, end, new, i))
     except ValueError as e:
         return str(e)
+
+    if not spans:
+        made = "The edit was" if len(edits) == 1 else f"All {len(edits)} edits were"
+        return (
+            f"{made} already made in {full}, so there was nothing left to do "
+            "and nothing was written. The file is already what you asked for."
+        )
 
     spans.sort()
     for (start, end, _, i), (later, _, _, j) in zip(spans, spans[1:]):
@@ -572,6 +1016,17 @@ def edit(path, edits):
 
     if after == before:
         return f"Nothing changed in {full}: the new text is the same as the old."
+
+    # Checked here as well as in write, since an edit breaks a config file the
+    # same way a rewrite does, and by the time another program trips over it the
+    # tool call that did it is several messages back.
+    broke = introduced(full, before, after)
+    if broke and os.path.splitext(full)[1].lower() in FAIL_CLOSED:
+        return (
+            f"Nothing was changed in {full}, because the result would not "
+            f"parse: {broke}. This is what the edit would have done:\n"
+            f"{diff(before, after, full)}"
+        )
     try:
         save(full, after, newline, bom)
     except OSError as e:
@@ -579,14 +1034,16 @@ def edit(path, edits):
 
     count = len(spans)
     made = "1 edit" if count == 1 else f"{count} edits"
-    note = ""
-    if repaired:
-        note = (
-            " One old_text only matched once its escaping was undone: you sent "
-            "a backslash and an n where the file has a line break. Send the "
-            "text as it is, not as it would look inside a Python string."
+    notes = [f" One old_text {REPAIRS[how]}" for how in sorted(repairs)]
+    if already:
+        which = ", ".join(f"edits[{i}]" for i in already)
+        notes.append(
+            f" {which} had already been made, so it was skipped rather than "
+            "counted above."
         )
-    return f"Made {made} in {full}.{note}\n{diff(before, after, full)}"
+    if broke:
+        notes.append(f" Warning: {broke}.")
+    return f"Made {made} in {full}.{''.join(notes)}\n{diff(before, after, full)}"
 
 
 def diff(before, after, path):
@@ -689,7 +1146,9 @@ EDIT_TOOL = {
             "missing or matches more than one place, nothing is written at all "
             "and you are told which, along with the lines in the file that came "
             "closest, so read the file first and include enough surrounding "
-            "lines to be sure. Returns a diff of what changed."
+            "lines to be sure. An edit whose new_text is already in the file is "
+            "one you have already made, and is skipped rather than treated as a "
+            "failure. Returns a diff of what changed."
         ),
         "parameters": {
             "type": "object",
