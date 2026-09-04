@@ -120,17 +120,11 @@ class RagIndex:
     def query(self, question, llm):
         """Stream an answer built from the chunks closest to the question.
 
-        Asked twice on purpose: the first query retrieves without writing
-        anything, so that a question nothing matches is reported as such instead
-        of being answered from the model's own memory with no sources behind it.
+        Retrieved first on purpose, without writing anything, so that a question
+        nothing matches is reported as such instead of being answered from the
+        model's own memory with no sources behind it.
         """
-        retrieved = self.index.as_query_engine(
-            llm=llm,
-            similarity_top_k=settings.similarity_top_k,
-            node_postprocessors=self._filters(),
-            response_mode="no_text",
-        ).query(question)
-        if not retrieved.source_nodes:
+        if not self.retrieve(question):
             raise DocumentError(
                 "Nothing in the index is close enough to that question. Lower "
                 "the similarity cutoff or index more documents."
@@ -143,6 +137,23 @@ class RagIndex:
             streaming=True,
         ).query(question)
         return self.response.response_gen
+
+    def retrieve(self, question):
+        """The chunks closest to the question, with the cutoff applied.
+
+        A retriever rather than a query engine in "no_text" mode. That mode
+        still builds a response synthesizer, and llama_index builds that one
+        without the llm it was handed, so it falls back to the process-wide
+        `Settings.llm` — which resolves to OpenAI and raises "No API key found
+        for OpenAI" no matter what the preset points at. Retrieving does not
+        need a model at all.
+        """
+        nodes = self.index.as_retriever(
+            similarity_top_k=settings.similarity_top_k
+        ).retrieve(question)
+        for each in self._filters():
+            nodes = each.postprocess_nodes(nodes, query_str=question)
+        return nodes
 
     @staticmethod
     def _filters():
