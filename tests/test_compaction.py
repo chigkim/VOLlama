@@ -64,7 +64,7 @@ def test_a_reply_that_simply_ended_was_not_cut_off():
 
 
 def test_summarizing_asks_the_model_to_hand_over_to_a_copy_of_itself():
-    client = fakes.FakeClient(fakes.Reply("  the summary  "))
+    client = fakes.FakeClient("  the summary  ")
     summary = compaction.summarize(client, [])
     assert summary == "the summary"
     asked = client.requests[0][-1]

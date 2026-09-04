@@ -26,11 +26,12 @@ log = logging.getLogger(__name__)
 
 APP_NAME = "VOLlama"
 
-# Fields holding an api key. Listed rather than matched on their names: a
-# substring test decides what to encrypt by accident, and gets it wrong the
-# first time somebody adds a field called "keyboard_shortcut".
-SECRETS = ("embedding_api_key",)
-PRESET_SECRET = "api_key"
+# The fields of a preset that hold an api key. Listed rather than matched on
+# their names: a substring test decides what to encrypt by accident, and gets
+# it wrong the first time somebody adds a field called "keyboard_shortcut".
+# Every secret VOLlama stores is a preset's, so there is nothing to hide at the
+# top level of the file.
+PRESET_SECRETS = ("api_key", "embedding_api_key")
 
 # The value the shipped defaults use to mean "no key yet". Encrypting it would
 # turn the placeholder into ciphertext that decrypts back to a placeholder.
@@ -78,17 +79,25 @@ def _apply(data, secret, transform):
     that was a real bug when the encryption worked on the live dictionaries.
     """
     out = dict(data)
-    for field in SECRETS:
-        if field in out:
-            out[field] = transform(secret, out[field])
     presets = out.get("presets")
     if isinstance(presets, dict):
         out["presets"] = {
-            name: {**preset, PRESET_SECRET: transform(secret, preset.get(PRESET_SECRET, ""))}
+            name: _keys(preset, secret, transform)
             for name, preset in presets.items()
             if isinstance(preset, dict)
         }
     return out
+
+
+def _keys(preset, secret, transform):
+    """A copy of one preset with each of its api keys put through transform."""
+    return {
+        **preset,
+        **{
+            field: transform(secret, preset.get(field, ""))
+            for field in PRESET_SECRETS
+        },
+    }
 
 
 def read(path):

@@ -243,31 +243,23 @@ Note: It retrieves only snippets of text relevant to your question, so full summ
 3. Wait until the document is indexed.
 4. In the message field, type `/q What are some positive news for today?` without the quotes. Prefacing your message with `/q` triggers processing your prompt with RAG using LlamaIndex.
 5. You can also index a folder with documents in it, including all subfolders. It will index all accessible documents, such as PDFs, TXT files, and DOCs.
+6. You can also just ask your question normally. While an index is loaded, the model is given a search tool listing the indexed file names, and it decides for itself when to look something up. This works whether or not Tools is checked in the Chat menu — that setting covers running commands and editing files on your machine, not searching documents you indexed yourself. `/q` remains for models that ignore tools or call them badly.
 
 ## Rag Settings
 
-This section describes the parameters related to the Retrieval-Augmented Generation (RAG) feature. The embedding settings are global, so RAG can use a different server than your chat preset.
+This section describes the parameters related to the Retrieval-Augmented Generation (RAG) feature. They belong to a preset, on the RAG page of the Preset Manager (control+P): a preset is a server, and the server running your chat model is usually the one running the embedding model. Switching preset does not re-embed an index you have already built; it changes what the next one is built with.
+
+Whether the retrieved chunks are printed with the answer is not a preset setting. It is Show Context, on the Rag menu, since it is a question about what you want to see right now rather than about a server.
 
 | Parameter | Description | Value Type | Default Value |
 |---------------------|-----------------------------------------------------------------------------------------------------|------------|---------------|
-| show_context | When enabled, displays the text chunks sent to the model. | bool | False |
 | chunk_size | Determines the size of text chunks for indexing. | int | 1024 |
 | chunk_overlap | Specifies the overlap between the start and end of each chunk. | int | 20 |
 | similarity_top_k | Number of the most relevant chunks fed to the model. | int | 2 |
 | similarity_cutoff | The threshold for filtering out less relevant chunks. Setting too high may exclude all chunks. | float | 0.0 |
-| response_mode | Determines how RAG synthesizes responses. | string | compact |
 | embedding_base_url | Base URL of the OpenAI-compatible server used for embeddings. | string | http://localhost:11434/v1/ |
 | embedding_api_key | API key for the embedding server. Empty for local servers. | string | empty |
 | embedding_model | Model used to embed documents and questions. | string | EmbeddingGemma |
-
-## response modes
-
-* refine: create and refine an answer by sequentially going through each retrieved text chunk. This makes a separate LLM call per retrieved chunk. Good for more detailed answers.
-* compact (default): similar to refine but compact the chunks beforehand, resulting in less LLM calls.
-* tree_summarize: Query the LLM using the summary_template prompt as many times as needed so that all concatenated chunks have been queried, resulting in as many answers that are themselves recursively used as chunks in a tree_summarize LLM call and so on, until there?s only one chunk left, and thus only one final answer.
-* simple_summarize: Truncates all text chunks to fit into a single LLM prompt. Good for quick summarization purposes, but may lose detail due to truncation.
-* accumulate: Given a set of text chunks and the query, apply the query to each text chunk while accumulating the responses into an array. Returns a concatenated string of all responses. Good for when you need to run the same query separately against each text chunk.
-* compact_accumulate: The same as accumulate, but will ?compact? each LLM prompt similar to compact, and run the same query against each text chunk.
 
 ## Docker (Optional)
 

@@ -18,7 +18,8 @@ import re
 
 import wx
 
-from vollama.chat.conversation import BACKGROUND
+from vollama.chat import toolset
+from vollama.chat.conversation import BACKGROUND, REASONING
 from vollama.config import presets
 from vollama.config.settings import settings
 from vollama.tools import registry
@@ -50,15 +51,29 @@ def lines_for(message, name):
     content = (message.content or "").strip()
     if message.role == "tool":
         return [f"Result: {trim(content)}"]
-    if message.additional_kwargs.get(BACKGROUND):
+    if message.extra.get(BACKGROUND):
         return [f"Background: {content}"]
     if message.role != "assistant":
         return [f"You: {content}"]
-    lines = [f"{name}: {content}"] if content else []
-    for call in message.additional_kwargs.get("tool_calls") or []:
+    # The same shape the reply had while it was arriving, so a re-rendered
+    # transcript reads like the one the user was watching.
+    reasoning = (
+        message.extra.get(REASONING) if settings.show_reasoning else ""
+    )
+    if reasoning:
+        # No label of its own: the Response: line below says where it ended,
+        # which is the only part that has to be marked.
+        lines = [f"{name}: {reasoning}"]
+        if content:
+            lines.append(f"---{os.linesep}Response: {content}")
+    else:
+        lines = [f"{name}: {content}"] if content else []
+    for call in message.extra.get("tool_calls") or []:
         function = call.get("function") or {}
         described = registry.describe(
-            function.get("name") or "", function.get("arguments") or ""
+            function.get("name") or "",
+            function.get("arguments") or "",
+            toolset.DESCRIBED,
         )
         lines.append(f"Tool: {trim(described)}")
     return lines
@@ -102,6 +117,9 @@ class TranscriptView:
 
     def reply_text(self, text):
         if self.showing_reasoning:
+            # Whatever the thinking ended mid-sentence with is its own, so it is
+            # spoken before the answer rather than run together with it.
+            self._flush_sentence()
             self._append(f"{os.linesep}---{os.linesep}Response: ")
             self.showing_reasoning = False
         self._append(text)
@@ -110,10 +128,14 @@ class TranscriptView:
     def reasoning_text(self, text):
         if not settings.show_reasoning:
             return
-        if not self.showing_reasoning:
-            self._append("Reasoning: ")
-            self.showing_reasoning = True
+        # Unlabelled, because the Response: line that follows it is what marks
+        # the boundary.
+        self.showing_reasoning = True
         self._append(text)
+        # Spoken too, so what is on screen is what is heard. Tool calls and
+        # results are not: they are a line about a machine, not prose to
+        # listen to.
+        self._speak_sentences(text)
 
     def reply_finished(self):
         self._flush_sentence()
@@ -132,7 +154,8 @@ class TranscriptView:
         self.status(
             f"{stats.total_tokens} tokens in {stats.total_seconds:.2f} seconds. "
             f"Prompt: {stats.prompt_tokens} tokens "
-            f"({stats.prompt_rate():.2f}/second). "
+            + (f"({stats.cached_tokens} cached, " if stats.cached_tokens else "(")
+            + f"{stats.prompt_rate():.2f}/second). "
             f"Reply: {stats.completion_tokens} tokens "
             f"({stats.output_rate():.2f}/second)."
         )

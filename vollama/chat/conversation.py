@@ -12,14 +12,25 @@ lists.
 
 import copy
 
-from llama_index.core.llms import ChatMessage
+from vollama.chat.message import Message
 
-# Markers on messages we made up rather than received. llama_index drops
-# additional_kwargs from user messages on the way out, so neither reaches the
-# server; they are here so the UI can tell these apart from something the user
-# actually typed.
+# Markers on messages we made up rather than received. `extra` is never sent,
+# so neither reaches the server; they are here so the UI can tell these apart
+# from something the user actually typed.
 BACKGROUND = "background"  # a background command that ended between turns
 SUMMARY = "summary"  # the handoff summary standing in for older messages
+
+# The model's own thinking, kept beside the answer it led to. On the message
+# rather than in its content so the transcript, Save and a re-render all still
+# have it, while the request it goes back in leaves it out: `extra` is not sent,
+# and the point of a reasoning model is that it thinks again rather than being
+# handed what it thought last time.
+REASONING = "reasoning"
+
+# What `extra` is called in a saved chat. The old name, because a file written
+# by an earlier build has to keep loading; `Settings.speakResponse` is the same
+# kind of exception, for the same reason.
+EXTRA = "additional_kwargs"
 
 # How many of your messages back tool calls and their results are still sent.
 # 1 means the turn in progress only.
@@ -46,7 +57,7 @@ class Conversation:
             if self.messages and self.messages[0].role == "system":
                 del self.messages[0]
             return
-        message = ChatMessage(role="system", content=system)
+        message = Message("system", system)
         if self.messages and self.messages[0].role == "system":
             self.messages[0] = message
         else:
@@ -58,26 +69,19 @@ class Conversation:
 
     def add_user(self, content, marker=None):
         kwargs = {marker: True} if marker else {}
-        return self.add(
-            ChatMessage(role="user", content=content, additional_kwargs=kwargs)
-        )
+        return self.add(Message("user", content, kwargs))
 
-    def add_assistant(self, text, tool_calls=()):
-        return self.add(
-            ChatMessage(
-                role="assistant",
-                content=(text or "").strip(),
-                additional_kwargs={"tool_calls": list(tool_calls)} if tool_calls else {},
-            )
-        )
+    def add_assistant(self, text, tool_calls=(), reasoning=""):
+        kwargs = {}
+        if tool_calls:
+            kwargs["tool_calls"] = list(tool_calls)
+        if reasoning:
+            kwargs[REASONING] = reasoning
+        return self.add(Message("assistant", (text or "").strip(), kwargs))
 
     def add_tool_result(self, call_id, name, result):
         return self.add(
-            ChatMessage(
-                role="tool",
-                content=result,
-                additional_kwargs={"tool_call_id": call_id, "name": name},
-            )
+            Message("tool", result, {"tool_call_id": call_id, "name": name})
         )
 
     # -------------------------------------------------------------- outgoing
@@ -110,20 +114,14 @@ class Conversation:
             cut = min(self.summary_at, len(messages))
             messages = (
                 [m for m in messages[:cut] if m.role == "system"]
-                + [
-                    ChatMessage(
-                        role="user",
-                        content=self.summary,
-                        additional_kwargs={SUMMARY: True},
-                    )
-                ]
+                + [Message("user", self.summary, {SUMMARY: True})]
                 + list(messages[cut:])
             )
 
         starts = [i for i, m in enumerate(messages) if m.role == "user"]
         if len(starts) > KEEP_TOOL_TURNS:
             messages = _without_old_tool_rounds(messages, starts[-KEEP_TOOL_TURNS])
-        return _with_environment(list(messages), environment)
+        return _with_environment(messages, environment)
 
     # ----------------------------------------------------------- compaction
 
@@ -203,7 +201,7 @@ class Conversation:
         message = self.messages[index]
         if message.role in ("tool", "system"):
             return False
-        if message.additional_kwargs.get(BACKGROUND):
+        if message.extra.get(BACKGROUND):
             return False
         return bool((message.content or "").strip())
 
@@ -212,18 +210,14 @@ class Conversation:
     def to_json(self):
         """The chat as plain data.
 
-        Tool calls and their ids live in additional_kwargs; without them a
-        reloaded chat has tool results the server cannot match up.
+        Tool calls and their ids live in `extra`; without them a reloaded chat
+        has tool results the server cannot match up.
         """
         return [
             {
                 "role": message.role,
                 "content": message.content,
-                **(
-                    {"additional_kwargs": copy.deepcopy(message.additional_kwargs)}
-                    if message.additional_kwargs
-                    else {}
-                ),
+                **({EXTRA: copy.deepcopy(message.extra)} if message.extra else {}),
             }
             for message in self.messages
         ]
@@ -231,10 +225,10 @@ class Conversation:
     def load_json(self, data):
         """Replace the chat with one that was saved."""
         self.messages = [
-            ChatMessage(
-                role=item["role"],
-                content=item.get("content") or "",
-                additional_kwargs=item.get("additional_kwargs") or {},
+            Message(
+                item["role"],
+                item.get("content") or "",
+                item.get(EXTRA) or {},
             )
             for item in data
         ]
@@ -249,10 +243,10 @@ def _without_old_tool_rounds(messages, cut):
             continue
         if message.role == "tool":
             continue
-        if message.additional_kwargs.get("tool_calls"):
+        if message.extra.get("tool_calls"):
             if not (message.content or "").strip():
                 continue
-            message = ChatMessage(role=message.role, content=message.content)
+            message = Message(message.role, message.content)
         kept.append(message)
     return kept
 
@@ -272,6 +266,6 @@ def _with_environment(messages, environment):
         at += 1
     return (
         messages[:at]
-        + [ChatMessage(role="system", content=environment)]
+        + [Message("system", environment)]
         + messages[at:]
     )

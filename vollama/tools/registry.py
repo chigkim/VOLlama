@@ -1,5 +1,8 @@
 """The five tools as one list, and the only way the chat layer reaches them.
 
+Five, plus whatever the session hands in as `extra`: search exists only while
+an index is loaded, and an index lives above this layer. See `chat.toolset`.
+
 A `Tool` pairs the OpenAI function schema the model reads with the three things
 the application needs alongside it: what to run, how to say what was run in one
 line of transcript, and whether the call counts against the turn's budget.
@@ -10,8 +13,10 @@ added is added in one place, and nothing has to be told about it twice.
 **Trust boundary.** Everything below this module acts on the user's machine
 with the user's own privileges, and there is no confirm-before-run dialog for
 commands or for file writes. The single gate is `settings.tools`, the Tools
-checkbox on the Chat menu, which is off by default and which `chat.client`
-consults when it decides whether to send this list at all. That is a deliberate
+checkbox on the Chat menu, which is off by default and which `chat.toolset`
+consults when it decides whether to offer this list at all. It gates *this*
+list, not the whole idea of a tool call: search reads an index the user built
+and is offered on its own terms. That is a deliberate
 product decision for a single-user desktop tool: a prompt on every call trains
 the user to say yes. It is stated here because a reader of the tool modules
 should not have to infer it from their absence.
@@ -64,9 +69,23 @@ BY_NAME = {tool.name: tool for tool in REGISTRY}
 TOOLS = [tool.schema for tool in REGISTRY]
 
 
-def is_free(name):
+def find(name, extra=()):
+    """The tool with this name, looking in the turn's own tools first.
+
+    `extra` is what a session can offer that this module cannot know about:
+    search exists only when an index is loaded, and the index is above this
+    layer. Composed by the caller rather than registered here, so nothing has
+    to be unregistered when a chat is started without one.
+    """
+    for tool in extra:
+        if tool.name == name:
+            return tool
+    return BY_NAME.get(name)
+
+
+def is_free(name, extra=()):
     """Whether this call is one that does not spend a round."""
-    tool = BY_NAME.get(name)
+    tool = find(name, extra)
     return bool(tool and tool.free)
 
 
@@ -87,14 +106,14 @@ def arguments_of(raw):
     return parsed
 
 
-def call(name, raw_arguments):
+def call(name, raw_arguments, extra=()):
     """Run the tool the model asked for and return its result as text.
 
     Every failure comes back as text, because the model is the one who has to
     read it and act on it. A tool that raised would end the turn instead, which
     is the wrong answer to a mistyped argument name.
     """
-    tool = BY_NAME.get(name)
+    tool = find(name, extra)
     if not tool:
         return f"There is no tool named {name}."
     arguments = arguments_of(raw_arguments)
@@ -106,12 +125,12 @@ def call(name, raw_arguments):
         return f"Wrong arguments for {name}: {e}"
 
 
-def describe(name, raw_arguments):
+def describe(name, raw_arguments, extra=()):
     """The one line the transcript shows for a call."""
     arguments = arguments_of(raw_arguments)
     if isinstance(arguments, str):
         return str(raw_arguments)
-    tool = BY_NAME.get(name)
+    tool = find(name, extra)
     if not tool:
         return f"{name} {json.dumps(arguments)}"
     return tool.summarize(arguments)

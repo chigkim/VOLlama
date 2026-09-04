@@ -16,16 +16,15 @@ import itertools
 import logging
 import time
 
-from llama_index.core.base.llms.types import ImageBlock, VideoBlock
-from llama_index.core.llms import ChatMessage
-
-from vollama.chat import client, compaction, streaming
+from vollama.chat import client, compaction, streaming, toolset
 from vollama.chat.conversation import BACKGROUND, Conversation
+from vollama.chat.message import Message, image_url
 from vollama.chat.view import NullView, TurnStats
 from vollama.config import presets
 from vollama.config.settings import settings
 from vollama.errors import DocumentError
 from vollama.rag import documents
+from vollama.rag import search
 from vollama.rag.index import RagIndex, describe_sources
 from vollama.tools import registry
 from vollama.tools.shell import cancellation, jobs
@@ -35,6 +34,15 @@ log = logging.getLogger(__name__)
 # What a message must start with to be answered from the index instead of by
 # the model alone.
 RETRIEVAL_PREFIX = "/q "
+
+# What to do about a retrieval prompt too big to answer. Said in two places —
+# before sending, and after a server has answered an oversized prompt with
+# nothing — so it is written once.
+TOO_MUCH = (
+    "A retrieval prompt is the question plus every chunk retrieved, so it may "
+    "not have fit: lower Top K or the chunk size on this preset's RAG page, "
+    "or raise its context window."
+)
 
 # How an attached document is joined to the message it came with.
 DOCUMENT_SEPARATOR = "\n---\n"
@@ -73,7 +81,12 @@ class ChatSession:
         # Why the server stopped the last reply, which is what tells a cut-off
         # answer from a finished one.
         self.finish_reason = ""
-        self.counter = client.token_counter()
+        # What the last request went out with, kept so the turn can be costed
+        # when the server reports no usage of its own.
+        self.sent = []
+        # The tools this turn is offering. Set per turn, since search comes and
+        # goes with the index and the Tools checkbox moves mid-chat.
+        self.tools = []
 
     # -------------------------------------------------------------- the turn
 
@@ -81,14 +94,10 @@ class ChatSession:
         """Answer one message. Raises if the request cannot be made at all."""
         view = view or NullView()
         preset = presets.require_active()
-        self.counter.reset_counts()
-        # The token counter chokes on the blocks a multimodal message carries,
-        # and a server that reports usage makes it unnecessary anyway.
-        llm = client.build(
-            preset,
-            tools=registry.TOOLS if client.tools_enabled() else None,
-            counter=None if attachments.images else self.counter,
-        )
+        # Composed once for the turn: what is offered must not change between
+        # the request that made a call and the one that answers it.
+        self.tools = toolset.for_turn(self.index)
+        llm = client.build(preset, tools=[tool.schema for tool in self.tools] or None)
 
         mark = len(self.conversation.messages)
         try:
@@ -115,11 +124,15 @@ class ChatSession:
         self.conversation.add(message)
         self.generating = True
         if retrieval:
-            self._answer_from_index(message.content, llm, view)
+            self._answer_from_index(message.content, llm, preset, view)
         else:
             view.status("Processing...")
             self._converse(llm, preset, view)
-        if self.generating:
+        # Not after a retrieval turn: what it spent is the chunks retrieved for
+        # it, which were never in the history and will not be in the next
+        # request either, so summarizing the chat over them shrinks the one
+        # thing that was not the problem.
+        if self.generating and not retrieval:
             self._compact_if_full(preset, view)
 
     def stop(self):
@@ -139,17 +152,17 @@ class ChatSession:
 
     def _converse(self, llm, preset, view):
         """Stream replies and run tools until the model has nothing more to ask."""
-        response = self._send(llm, preset, view)
+        response, started = self._send(llm, preset, view)
         rounds = 0
         calls = 0
         retried = False
         while True:
-            text, tool_calls = self._stream(response, view)
-            self.conversation.add_assistant(text, tool_calls)
+            text, reasoning, tool_calls = self._stream(response, view, started)
+            self.conversation.add_assistant(text, tool_calls, reasoning)
             if not tool_calls:
                 if self.generating and not retried and self._recover(preset, view):
                     retried = True
-                    response = self._send(llm, preset, view)
+                    response, started = self._send(llm, preset, view)
                     continue
                 return
             # A dangling tool call the server never sees an answer for makes the
@@ -167,45 +180,58 @@ class ChatSession:
                 return
             # Polls and reads only look at work already there, so they do not
             # spend the budget: waiting for a build would otherwise use it all.
-            if any(not registry.is_free(_name(call)) for call in tool_calls):
+            if any(
+                not registry.is_free(_name(call), self.tools) for call in tool_calls
+            ):
                 rounds += 1
             view.status("Processing...")
-            response = self._send(llm, preset, view)
+            response, started = self._send(llm, preset, view)
 
     def _run_tool(self, call, view, allowed):
         """Run one tool call, report it, and record its result as a message."""
         name = _name(call)
         arguments = call["function"]["arguments"]
-        view.tool_called(registry.describe(name, arguments))
+        view.tool_called(registry.describe(name, arguments, self.tools))
         if allowed:
             view.status(f"Running {name}...")
-            result = registry.call(name, arguments)
+            result = registry.call(name, arguments, self.tools)
         elif self.generating:
             result = "Not run: the limit on tool calls in one message was reached."
         else:
             result = "Not run: the user stopped generation."
         view.tool_result(result)
         self.conversation.add_tool_result(call["id"], name, result)
+        if name == search.NAME and allowed and settings.show_context:
+            # The same thing Show Context shows after a /q turn: what was
+            # retrieved and how close it was. A search the model asked for is
+            # the one the user has least other way of seeing.
+            view.notice(describe_sources(self.index.sources()))
 
-    def _stream(self, response, view):
-        """Consume one streamed reply. Returns its text and its tool calls."""
+    def _stream(self, response, view, started):
+        """Consume one streamed reply.
+
+        Returns its text, the thinking that came with it, and its tool calls.
+        The thinking is collected as well as shown because it belongs to the
+        message: a transcript re-rendered from the history, a saved chat and a
+        chat reopened would otherwise all lose what the user had just read.
+        """
         view.reply_started()
-        started = time.monotonic()
         first = 0.0
         answer = []
-        extras = {}
-        last = None
+        thinking = []
+        calls = streaming.Calls()
         usage = None
         self.finish_reason = ""
         for chunk in response:
             if not first:
                 first = time.monotonic()
                 view.status("Typing...")
-            last = chunk
-            streaming.collect_extras(chunk, extras)
+            chunk = streaming.plain(chunk)
+            calls.add(chunk)
             usage = streaming.usage_of(chunk) or usage
             text, reasoning = streaming.text_of(chunk)
             if reasoning:
+                thinking.append(reasoning)
                 view.reasoning_text(reasoning)
             if text:
                 answer.append(text)
@@ -214,18 +240,16 @@ class ChatSession:
             if not self.generating:
                 break
         view.reply_finished()
-        self._record_usage(usage, started, first or time.monotonic(), view)
-        return "".join(answer), streaming.tool_calls_of(last, extras)
+        text = "".join(answer)
+        self._record_usage(usage, started, first or time.monotonic(), view, text)
+        return text, "".join(thinking), calls.done()
 
-    def _record_usage(self, usage, started, first, view):
+    def _record_usage(self, usage, started, first, view, text):
         """Note what the exchange cost, from the server or from our own count."""
-        if usage is None and self.counter.total_llm_token_count:
+        if usage is None and self.sent:
             # Not every server honours stream_options, so a local tokenizer
             # stands in. It is an estimate, and it is what compaction reads.
-            usage = (
-                self.counter.prompt_llm_token_count,
-                self.counter.completion_llm_token_count,
-            )
+            usage = (client.count_messages(self.sent), client.count(text))
         if usage is None:
             self.usage = None
             view.status("Finished")
@@ -233,6 +257,7 @@ class ChatSession:
         self.usage = TurnStats(
             prompt_tokens=usage[0],
             completion_tokens=usage[1],
+            cached_tokens=usage[2] if len(usage) > 2 else 0,
             total_seconds=time.monotonic() - started,
             first_token_seconds=first - started,
         )
@@ -243,7 +268,7 @@ class ChatSession:
     def _send(self, llm, preset, view):
         """Make the request, compacting and trying once more if it will not fit."""
         try:
-            return _start(llm, self.conversation.outgoing(_environment()))
+            return self._start(llm, self.conversation.outgoing(_environment()))
         except Exception as refusal:
             if not compaction.overflowed(refusal):
                 raise
@@ -262,7 +287,32 @@ class ChatSession:
                 raise refusal from None
             if not compacted:
                 raise
-            return _start(llm, self.conversation.outgoing(_environment()))
+            return self._start(llm, self.conversation.outgoing(_environment()))
+
+    def _start(self, llm, messages):
+        """Send the request and pull the first chunk.
+
+        Pulled here because the stream is lazy: without it a request the server
+        refuses fails somewhere in the middle of showing a reply, which is too
+        late to compact and ask again.
+
+        Returns the stream and the moment the request went out, which is when
+        the turn's clock has to start: the first chunk is already in hand by the
+        time anybody reads the stream, so a clock started there measures
+        generation only and reports the prompt as having been processed
+        instantly.
+
+        What went out is kept, since costing the turn falls to us when the
+        server reports no usage of its own.
+        """
+        self.sent = list(messages)
+        started = time.monotonic()
+        response = iter(llm.stream(messages))
+        try:
+            first = next(response)
+        except StopIteration:
+            return iter(()), started
+        return itertools.chain([first], response), started
 
     def _recover(self, preset, view):
         """Compact and retry when a reply came back cut short. Once per turn.
@@ -361,10 +411,8 @@ class ChatSession:
         if attachments.files:
             view.status("Reading the documents...")
             text += DOCUMENT_SEPARATOR + documents.read_files(attachments.files)
-        message = ChatMessage(role="user", content=text)
-        for image in images:
-            message.blocks.append(_block(image))
-        return message, retrieval
+        images = [_image(path) for path in images]
+        return Message("user", text, images=images), retrieval
 
     def _report_background(self, view):
         """Pass on what background commands did while nobody was looking.
@@ -390,21 +438,75 @@ class ChatSession:
         self.index = RagIndex()
         return self.index.build(source, progress)
 
+    def clear_index(self):
+        """Forget the index, and say whether there was one to forget.
+
+        Which also takes the model's `search` tool away, since `toolset` offers
+        it on an index being loaded rather than on a setting: with no way to
+        clear one, retrieval could be turned on and never off again.
+        """
+        had = self.index is not None
+        self.index = None
+        return had
+
     def save_index(self, folder):
         if not self.index:
             raise DocumentError("Nothing has been indexed yet.")
         self.index.save(folder)
 
-    def _answer_from_index(self, question, llm, view):
-        """Answer from the index instead of from the conversation alone."""
+    def _answer_from_index(self, question, llm, preset, view):
+        """Answer from the index instead of from the conversation alone.
+
+        The prompt is assembled here and sent through the same streaming path
+        as any other request, rather than handed to a llama_index query engine.
+        That engine yields bare strings, so it lost the model's reasoning, the
+        usage numbers and the finish reason on the way through.
+
+        The retrieval prompt is what goes out, and only the question is kept in
+        the history: the chunks belong to this question and resending them with
+        every later message would fill the window with them.
+        """
         if not self.index or not self.index.ready():
             raise RuntimeError("No index found. Index something first.")
         view.status("Processing with RAG...")
-        response = self.index.query(question, llm)
-        text, _ = self._stream(response, view)
-        self.conversation.add_assistant(text)
+        # The clock starts at retrieval, which is part of what the user waited
+        # for, and before the size check so a refusal is still timed.
+        started = time.monotonic()
+        prompt = self.index.prompt(question)
+        self._check_fits(prompt, preset)
+        response, _ = self._start(llm, [Message("user", prompt)])
+        text, reasoning, _ = self._stream(response, view, started)
+        self.conversation.add_assistant(text, reasoning=reasoning)
+        if self.generating and not text.strip():
+            # A server that truncates an oversized prompt instead of refusing
+            # it answers with nothing rather than with an error, and unexplained
+            # silence reads as the app having failed to send anything at all.
+            size = (
+                f" The prompt was {self.usage.prompt_tokens} tokens long."
+                if self.usage
+                else ""
+            )
+            view.notice("The model answered nothing." + size + " " + TOO_MUCH)
         if settings.show_context:
             view.notice(describe_sources(self.index.sources()))
+
+    @staticmethod
+    def _check_fits(prompt, preset):
+        """Refuse a retrieval prompt that cannot fit before sending it.
+
+        The synthesizer used to pack the chunks to the window itself. Counting
+        them here instead is a local tokenizer's estimate rather than the
+        server's own count, so the headroom is generous: the point is to name
+        the cause of a prompt that is wildly too big, not to fill the window to
+        the token.
+        """
+        window = preset.context_window
+        room = window - client.max_output(preset)
+        if room <= 0 or client.count(prompt) <= room:
+            return
+        raise DocumentError(
+            f"The retrieved text does not fit in {window} tokens. " + TOO_MUCH
+        )
 
 
 def _name(call):
@@ -416,23 +518,6 @@ def _environment():
     return registry.environment() if client.tools_enabled() else None
 
 
-def _block(image):
-    """One attachment, as the block its file type calls for."""
-    if documents.is_video(image):
-        return VideoBlock(path=image)
-    return ImageBlock(image=documents.encode_image(image))
-
-
-def _start(llm, messages):
-    """Send the request and pull the first chunk.
-
-    The library only talks to the server when the stream is first read, so
-    without this a request that is refused fails somewhere in the middle of
-    showing a reply, which is too late to compact and try again.
-    """
-    response = llm.stream_chat(messages)
-    try:
-        first = next(response)
-    except StopIteration:
-        return iter(())
-    return itertools.chain([first], response)
+def _image(path):
+    """One attached picture, as the data URL a vision model is sent."""
+    return image_url(path, documents.read_image(path))

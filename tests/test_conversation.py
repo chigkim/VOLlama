@@ -4,9 +4,8 @@ The distinction these tests exist to protect: `messages` never loses anything,
 `outgoing()` is allowed to.
 """
 
-from llama_index.core.llms import ChatMessage
-
-from vollama.chat.conversation import BACKGROUND, SUMMARY, Conversation
+from vollama.chat.conversation import BACKGROUND, REASONING, SUMMARY, Conversation
+from vollama.chat.message import Message
 
 
 def turn(conversation, question, answer):
@@ -71,7 +70,7 @@ def test_an_older_assistant_message_keeps_its_words_and_loses_its_call():
 
     kept = [m for m in conversation.outgoing() if m.role == "assistant"]
     assert texts(kept) == ["let me look"]
-    assert not kept[0].additional_kwargs.get("tool_calls")
+    assert not kept[0].extra.get("tool_calls")
 
 
 def test_a_call_and_its_result_are_always_sent_together():
@@ -81,7 +80,7 @@ def test_a_call_and_its_result_are_always_sent_together():
     conversation.add_user("second")
 
     sent = conversation.outgoing()
-    calls = sum(1 for m in sent if m.additional_kwargs.get("tool_calls"))
+    calls = sum(1 for m in sent if m.extra.get("tool_calls"))
     results = sum(1 for m in sent if m.role == "tool")
     assert calls == results
 
@@ -100,7 +99,7 @@ def test_the_summary_replaces_the_old_turns_only_on_the_way_out():
     assert sent[1].content == "what happened"
     # As a message from the user: a model told it wrote this repeats it.
     assert sent[1].role == "user"
-    assert sent[1].additional_kwargs[SUMMARY] is True
+    assert sent[1].extra[SUMMARY] is True
     assert len(conversation.messages) == 5
 
 
@@ -175,6 +174,16 @@ def test_alt_up_lands_only_on_what_somebody_actually_said():
     assert texts([conversation.messages[i] for i in reviewable]) == ["question", "answer"]
 
 
+def test_the_first_message_of_a_chat_is_not_an_edit_of_the_system_prompt():
+    """What the window asks before it treats a send as an edit.
+
+    A preset with a system prompt puts a message at index 0, and the window
+    starts its history mark there, so comparing the mark against the length made
+    the first thing ever typed an edit: it vanished and replaced the prompt.
+    """
+    assert not Conversation("system").reviewable(0)
+
+
 # ------------------------------------------------------------ saving
 
 
@@ -186,8 +195,8 @@ def test_a_saved_chat_comes_back_with_its_tool_call_ids():
     reloaded = Conversation()
     reloaded.load_json(conversation.to_json())
     assert roles(reloaded.messages) == roles(conversation.messages)
-    assert reloaded.messages[-1].additional_kwargs["tool_call_id"] == "c1"
-    assert reloaded.messages[-2].additional_kwargs["tool_calls"][0]["id"] == "c1"
+    assert reloaded.messages[-1].extra["tool_call_id"] == "c1"
+    assert reloaded.messages[-2].extra["tool_calls"][0]["id"] == "c1"
 
 
 def test_saving_does_not_hand_out_the_live_message_kwargs():
@@ -195,7 +204,7 @@ def test_saving_does_not_hand_out_the_live_message_kwargs():
     conversation.add_tool_result("c1", "run", "output")
     saved = conversation.to_json()
     saved[0]["additional_kwargs"]["tool_call_id"] = "changed"
-    assert conversation.messages[0].additional_kwargs["tool_call_id"] == "c1"
+    assert conversation.messages[0].extra["tool_call_id"] == "c1"
 
 
 def test_loading_a_chat_forgets_the_summary_of_a_different_one():
@@ -206,8 +215,24 @@ def test_loading_a_chat_forgets_the_summary_of_a_different_one():
     assert texts(conversation.outgoing()) == ["hello"]
 
 
-def test_a_message_without_additional_kwargs_round_trips():
+def test_a_message_without_extras_round_trips():
     conversation = Conversation()
     conversation.load_json([{"role": "user", "content": "hello"}])
     assert conversation.to_json() == [{"role": "user", "content": "hello"}]
-    assert isinstance(conversation.messages[0], ChatMessage)
+    assert isinstance(conversation.messages[0], Message)
+
+
+def test_reasoning_is_kept_in_the_history_and_left_out_of_the_request():
+    """Worth keeping, not worth sending.
+
+    A reasoning model is supposed to think again rather than be handed what it
+    thought last time. It is kept because the transcript, Save and alt+up show
+    what the user watched arrive.
+    """
+    conversation = Conversation()
+    conversation.add_user("how many")
+    conversation.add_assistant("42", reasoning="let me count")
+
+    assert conversation.messages[-1].extra[REASONING] == "let me count"
+    assert all(REASONING not in m.to_wire() for m in conversation.outgoing())
+    assert conversation.messages[-1].extra[REASONING] == "let me count"

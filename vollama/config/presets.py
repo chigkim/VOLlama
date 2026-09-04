@@ -1,10 +1,11 @@
 """Presets: the unit of configuration.
 
 A preset owns everything about talking to one model on one server — base URL,
-api key, model name, context window, system prompt and generation parameters.
-There is no separate connection dialog and no per-provider branching, because
-every endpoint takes the same OpenAI-compatible path; what differs between them
-is exactly the fields below.
+api key, model name, context window, system prompt, generation parameters, and
+the embedding endpoint and retrieval settings that go with them. There is no
+separate connection dialog and no per-provider branching, because every
+endpoint takes the same OpenAI-compatible path; what differs between them is
+exactly the fields below.
 
 This module owns the rules as well as the shape. Whether a preset is usable,
 whether a name is free, and which preset becomes active when the current one is
@@ -24,6 +25,13 @@ from vollama.errors import ConfigError
 # to the server, so guessing low is safe and guessing high is not.
 DEFAULT_CONTEXT_WINDOW = 8192
 
+# What a preset embeds with when it does not say. Unlike `base_url`, this one
+# does have a default: `validate()` does not check it, so a default here cannot
+# make an empty preset half pass, and a preset with nothing in this field can
+# index nothing at all.
+DEFAULT_EMBEDDING_URL = "http://localhost:11434/v1/"
+DEFAULT_EMBEDDING_MODEL = "EmbeddingGemma"
+
 
 @dataclass
 class Preset:
@@ -39,6 +47,21 @@ class Preset:
     system: str = ""
     parameters: dict = field(default_factory=parameters.defaults)
 
+    # The embedding endpoint and how much text to retrieve from it. Here
+    # rather than global because a preset is a server: the endpoint that
+    # serves the chat model is usually the one serving the embedding model,
+    # and pointing every preset at one embedding URL meant that switching
+    # from a local model to a hosted one left retrieval talking to a server
+    # that was no longer running. Switching preset does not re-embed what is
+    # already indexed; see `rag.index.RagIndex._configure`.
+    embedding_base_url: str = DEFAULT_EMBEDDING_URL
+    embedding_api_key: str = ""
+    embedding_model: str = DEFAULT_EMBEDDING_MODEL
+    chunk_size: int = 1024
+    chunk_overlap: int = 20
+    similarity_top_k: int = 2
+    similarity_cutoff: float = 0.0
+
     @classmethod
     def from_dict(cls, data):
         preset = cls(
@@ -48,6 +71,15 @@ class Preset:
             context_window=_whole(data.get("context_window")),
             system=str(data.get("system") or ""),
             parameters=copy.deepcopy(data.get("parameters") or {}),
+            embedding_base_url=str(
+                data.get("embedding_base_url") or DEFAULT_EMBEDDING_URL
+            ),
+            embedding_api_key=str(data.get("embedding_api_key") or ""),
+            embedding_model=str(data.get("embedding_model") or DEFAULT_EMBEDDING_MODEL),
+            chunk_size=_whole(data.get("chunk_size"), 1024),
+            chunk_overlap=_number(data.get("chunk_overlap"), int, 20),
+            similarity_top_k=_whole(data.get("similarity_top_k"), 2),
+            similarity_cutoff=_number(data.get("similarity_cutoff"), float, 0.0),
         )
         parameters.reconcile(preset.parameters)
         return preset
@@ -60,6 +92,13 @@ class Preset:
             "context_window": self.context_window,
             "system": self.system,
             "parameters": self.parameters,
+            "embedding_base_url": self.embedding_base_url,
+            "embedding_api_key": self.embedding_api_key,
+            "embedding_model": self.embedding_model,
+            "chunk_size": self.chunk_size,
+            "chunk_overlap": self.chunk_overlap,
+            "similarity_top_k": self.similarity_top_k,
+            "similarity_cutoff": self.similarity_cutoff,
         }
 
     def options(self):
@@ -80,11 +119,17 @@ class Preset:
             raise ConfigError("This preset has no model.")
 
 
-def _whole(value):
+def _whole(value, default=DEFAULT_CONTEXT_WINDOW):
+    """A positive whole number from the file, or the default. 0 is not one."""
+    return _number(value, int, default) or default
+
+
+def _number(value, kind, default):
+    """A number from the file, whatever a hand-edited file put in the field."""
     try:
-        return int(value) or DEFAULT_CONTEXT_WINDOW
+        return kind(value)
     except (TypeError, ValueError):
-        return DEFAULT_CONTEXT_WINDOW
+        return default
 
 
 def names():
@@ -146,6 +191,16 @@ def context_window():
     """
     preset = active()
     return preset.context_window if preset else DEFAULT_CONTEXT_WINDOW
+
+
+def retrieval():
+    """The preset retrieval reads its settings from.
+
+    The defaults stand in when no preset is configured, so building an index
+    is not a second place that has to have an opinion about that: it will fail
+    on the embedding request instead, where the reason is visible.
+    """
+    return active() or Preset()
 
 
 def create(name, preset):

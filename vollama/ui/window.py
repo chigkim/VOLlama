@@ -35,13 +35,10 @@ from vollama.tools.workspace import working_dir
 from vollama.ui import transcript, update
 from vollama.ui.errors import show_error, show_info
 from vollama.ui.preset_manager import PresetManager
-from vollama.ui.rag_dialog import RagDialog
 from vollama.ui.speech_dialog import SpeechDialog
 
 DOCUMENT_FILTER = documents.wildcard("Supported Files", documents.DOCUMENT_EXTENSIONS)
-IMAGE_FILTER = documents.wildcard(
-    "Image and video files", documents.IMAGE_EXTENSIONS + documents.VIDEO_EXTENSIONS
-)
+IMAGE_FILTER = documents.wildcard("Image files", documents.IMAGE_EXTENSIONS)
 
 INCOMPATIBLE_SETTINGS = (
     "Your settings were written by a different version of VOLlama and cannot be "
@@ -95,7 +92,7 @@ class ChatWindow(wx.Frame):
 
         self.session = ChatSession(self._system_prompt())
         self.attachments = Attachments()
-        self.history_index = 0
+        self.history_index = len(self.session.conversation.messages)
 
         self._build_ui()
         self.view = transcript.TranscriptView(
@@ -148,7 +145,8 @@ class ChatWindow(wx.Frame):
             settings.tools,
             self.on_toggle_tools,
             "Let the model run commands and edit files on this computer. It "
-            "does so without asking you first.",
+            "does so without asking you first. Searching documents you have "
+            "indexed is not covered by this and is always allowed.",
         )
         self.workdir_item = self._item(
             menu,
@@ -201,7 +199,15 @@ class ChatWindow(wx.Frame):
         self._item(menu, "Index Directory...", handler=self.on_index_folder)
         self._item(menu, "Load Index...", handler=self.on_load_index)
         self._item(menu, "Save Index...", handler=self.on_save_index)
-        self._item(menu, "Settings...", handler=self.on_rag_settings)
+        self._item(menu, "Clear Index", handler=self.on_clear_index)
+        self.context_item = self._check(
+            menu,
+            "Show Conte&xt",
+            settings.show_context,
+            self.on_toggle_context,
+            "Print the retrieved passages and their similarity scores with "
+            "the answer.",
+        )
         return menu
 
     def _standard(self, menu, identifier, handler):
@@ -311,8 +317,12 @@ class ChatWindow(wx.Frame):
         if not message:
             return
         self.prompt.SetValue("")
-        if self.history_index < len(self.session.conversation.messages):
-            # Editing an earlier message rather than sending a new one.
+        if self.session.conversation.reviewable(self.history_index):
+            # Editing a message alt+up walked back to, rather than sending a new
+            # one. Asked of the conversation rather than compared against its
+            # length: a preset with a system prompt puts a message at index 0, so
+            # the first thing ever typed counted as an edit of it and was
+            # swallowed, replacing the system prompt with the user's own text.
             self.session.conversation.messages[self.history_index].content = message
             self._refresh_transcript()
             return
@@ -390,7 +400,7 @@ class ChatWindow(wx.Frame):
         shell.jobs.kill_all()
         self.session.restart(self._system_prompt())
         self.output.Clear()
-        self.history_index = 0
+        self.history_index = len(self.session.conversation.messages)
 
     def on_open(self, event):
         with wx.FileDialog(
@@ -508,9 +518,22 @@ class ChatWindow(wx.Frame):
         if folder:
             self._in_background(self.session.save_index, folder)
 
-    def on_rag_settings(self, event):
-        with RagDialog(self) as dialog:
-            dialog.ShowModal()
+    def on_clear_index(self, event):
+        """Forget the loaded index, and with it the model's search tool.
+
+        Reported either way rather than greyed out when there is nothing to
+        clear: a disabled item is one a screen reader reads past without saying
+        why, and "nothing has been indexed yet" is the answer to the question
+        the user was asking by choosing it.
+        """
+        message = (
+            "The index has been cleared."
+            if self.session.clear_index()
+            else "Nothing has been indexed yet."
+        )
+        self.set_status(message)
+        show_info("Index", message)
+        self.focus_prompt()
 
     def _choose_folder(self, title, start=""):
         with wx.DirDialog(
@@ -522,6 +545,16 @@ class ChatWindow(wx.Frame):
 
     def on_toggle_reasoning(self, event):
         settings.show_reasoning = self.reasoning_item.IsChecked()
+        settings.save()
+
+    def on_toggle_context(self, event):
+        """Whether a retrieval turn prints the passages it used.
+
+        Here rather than on a preset's RAG page: it is a question about
+        what to show right now, not about the server, and it belongs beside the
+        retrieval it describes.
+        """
+        settings.show_context = self.context_item.IsChecked()
         settings.save()
 
     def on_toggle_tools(self, event):

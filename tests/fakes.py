@@ -2,56 +2,71 @@
 
 Both are written out rather than mocked. A recorded list of calls is easier to
 assert against than a mock's call list, and a chunk built from a dictionary is
-exactly what a real one looks like to `chat.streaming`.
+exactly what a real one looks like to `chat.streaming`: the reader turns every
+chunk into a dict before touching it, so a dict *is* the wire format here.
 """
 
-
-class Choice:
-    def __init__(self, delta=None, finish_reason=None):
-        self.delta = delta or {}
-        self.finish_reason = finish_reason
+from vollama.config import presets
+from vollama.config.presets import Preset
 
 
-class Raw:
-    """What the openai library hands back for one streamed chunk."""
+def preset(**fields):
+    """One usable preset, active, with `fields` set on it.
 
-    def __init__(self, choices=(), usage=None):
-        self.choices = list(choices)
-        self.usage = usage
-
-
-class Usage:
-    def __init__(self, prompt_tokens, completion_tokens):
-        self.prompt_tokens = prompt_tokens
-        self.completion_tokens = completion_tokens
+    The retrieval settings live on a preset, so a test that wants a different
+    cutoff or chunk size sets it here rather than on `settings`.
+    """
+    made = Preset(base_url="http://localhost/v1/", model="m", **fields)
+    presets.replace([("test", made)], "test")
+    return made
 
 
-class Message:
-    def __init__(self, additional_kwargs=None):
-        self.additional_kwargs = additional_kwargs or {}
-
-
-class Chunk:
-    """One streamed chunk as llama_index presents it."""
-
-    def __init__(self, delta="", tool_calls=None, raw=None, additional_kwargs=None):
-        self.delta = delta
-        self.message = Message({"tool_calls": tool_calls} if tool_calls else {})
-        self.raw = raw
-        self.additional_kwargs = additional_kwargs or {}
+def chunk(delta=None, finish_reason=None, usage=None):
+    """One streamed chunk, in the shape the server sends it."""
+    made = {}
+    if delta is not None or finish_reason is not None:
+        made["choices"] = [{"delta": delta or {}, "finish_reason": finish_reason}]
+    if usage is not None:
+        made["usage"] = usage
+    return made
 
 
 def text_chunk(text, finish_reason=None):
-    return Chunk(delta=text, raw=Raw([Choice(finish_reason=finish_reason)]))
+    return chunk(delta={"content": text}, finish_reason=finish_reason)
 
 
-def usage_chunk(prompt_tokens, completion_tokens):
+def reasoning_chunk(text):
+    return chunk(delta={"reasoning_content": text})
+
+
+def usage_chunk(prompt_tokens, completion_tokens, cached_tokens=None):
     """The extra chunk stream_options asks for: usage, and no choices."""
-    return Chunk(raw=Raw([], Usage(prompt_tokens, completion_tokens)))
+    usage = {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens}
+    if cached_tokens is not None:
+        usage["prompt_tokens_details"] = {"cached_tokens": cached_tokens}
+    return chunk(usage=usage)
+
+
+def call_chunk(name, arguments, id="call_1", index=0, extra_content=None):
+    """A whole tool call in one chunk, which is enough for most tests."""
+    fragment = {
+        "index": index,
+        "id": id,
+        "type": "function",
+        "function": {"name": name, "arguments": arguments},
+    }
+    if extra_content:
+        fragment["extra_content"] = extra_content
+    return chunk(delta={"tool_calls": [fragment]})
 
 
 def call(name, arguments, id="call_1"):
-    return {"id": id, "type": "function", "function": {"name": name, "arguments": arguments}}
+    """A finished tool call, as it is stored on an assistant message."""
+    return {
+        "id": id,
+        "type": "function",
+        "function": {"name": name, "arguments": arguments},
+    }
 
 
 class FakeClient:
@@ -61,29 +76,20 @@ class FakeClient:
         self.streams = list(streams)
         self.requests = []
 
-    def stream_chat(self, messages):
-        self.requests.append(list(messages))
+    def _next(self, messages):
+        self.requests.append([message.copy() for message in messages])
         if not self.streams:
             raise AssertionError("The session made more requests than were prepared.")
         stream = self.streams.pop(0)
         if isinstance(stream, Exception):
             raise stream
-        return iter(stream)
-
-    def chat(self, messages):
-        self.requests.append(list(messages))
-        stream = self.streams.pop(0)
-        if isinstance(stream, Exception):
-            raise stream
         return stream
 
+    def stream(self, messages):
+        return iter(self._next(messages))
 
-class Reply:
-    """What a non-streamed chat() call returns."""
-
-    def __init__(self, text):
-        self.message = Message()
-        self.message.content = text
+    def complete(self, messages):
+        return self._next(messages)
 
 
 class RecordingView:

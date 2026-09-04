@@ -1,12 +1,13 @@
-"""Managing presets: the preset button, and connection, parameters, prompt.
+"""Managing presets: the preset button, and the pages editing one preset.
 
 One dialog. The toolbar's own preset button, whose menu switches preset and
-holds New, Duplicate and Delete, above three notebook pages editing whichever
-preset the button names; each page knows how to fill itself from a `Preset` and
-how to write itself back into one. Everything else about presets — whether a
-name is free, whether the preset can be used, where it is stored, which one
-becomes active when another is deleted — belongs to `config.presets`, and this
-dialog calls into it rather than deciding again.
+holds New, Duplicate and Delete, above four notebook pages editing whichever
+preset the button names — connection, parameters, retrieval, system prompt;
+each page knows how to fill itself from a `Preset` and how to write itself
+back into one. Everything else about presets — whether a name is free, whether
+the preset can be used, where it is stored, which one becomes active when
+another is deleted — belongs to `config.presets`, and this dialog calls into it
+rather than deciding again.
 
 Edits go into copies, so Cancel discards them all. `ShowModal()` returning
 `wx.ID_OK` means the presets have already been saved.
@@ -48,9 +49,44 @@ STARTING_URL = "http://localhost:11434/v1/"
 # shares.
 BASE_URL_ROW = 1
 
+# The connection page's place in the notebook, since it is the page a refusal
+# about the preset's name or its URL and model belongs on.
 CONNECTION_PAGE = 0
-PARAMETERS_PAGE = 1
-PROMPT_PAGE = 2
+
+
+class Invalid(Exception):
+    """What a page says when what is on it cannot be written to a preset.
+
+    The message is already worded for the user, and `control` is the field that
+    fixes it, so the dialog can put the focus there without knowing which page
+    raised or what it holds.
+    """
+
+    def __init__(self, message, control=None):
+        super().__init__(message)
+        self.control = control
+
+
+def labelled(panel, grid, row, label, make, tip):
+    """Add one labelled control to `grid`, and hand the control back.
+
+    `make` is what builds the control, rather than the control itself, because
+    a screen reader on Windows pairs a field with the static text created
+    before it and not with the one the sizer puts to its left. Every field here
+    used to be constructed as an argument, so each was announced with the label
+    of the row above: the Base URL box read as "Name".
+    """
+    grid.Add(
+        wx.StaticText(panel, label=label + ":"),
+        pos=(row, 0),
+        flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL,
+        border=5,
+    )
+    control = make(panel)
+    control.SetName(label.replace("&", ""))
+    control.SetToolTip(tip)
+    grid.Add(control, pos=(row, 1), flag=wx.EXPAND | wx.ALL, border=5)
+    return control
 
 
 class ConnectionPage(wx.Panel):
@@ -109,26 +145,7 @@ class ConnectionPage(wx.Panel):
         self.SetSizer(grid)
 
     def _row(self, grid, row, label, make, tip):
-        """A labelled control, with the label created before the control.
-
-        `make` is what builds it, rather than the control itself, because a
-        screen reader on Windows pairs a field with the static text created
-        before it and not with the one the sizer puts to its left. Every field
-        used to be constructed as an argument to this method, so each was
-        announced with the label of the row above: the Base URL box read as
-        "Name".
-        """
-        grid.Add(
-            wx.StaticText(self, label=label + ":"),
-            pos=(row, 0),
-            flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL,
-            border=5,
-        )
-        control = make(self)
-        control.SetName(label.replace("&", ""))
-        control.SetToolTip(tip)
-        grid.Add(control, pos=(row, 1), flag=wx.EXPAND | wx.ALL, border=5)
-        return control
+        return labelled(self, grid, row, label, make, tip)
 
     def _button(self, grid, row, label, name, tip, handler):
         button = wx.Button(self, label=label)
@@ -270,11 +287,128 @@ class ParametersPage(wx.Panel):
         for key, control in self.controls.items():
             if isinstance(control, wx.CheckBox):
                 self.parameters[key]["value"] = control.IsChecked()
-            else:
+                continue
+            try:
                 self.parameters[key]["value"] = parameters.parse_value(
                     key, control.GetValue(), self.parameters[key]["value"]
                 )
+            except ValueError as e:
+                raise Invalid(f"A parameter value is not valid: {e}", control) from None
         preset.parameters = self.parameters
+
+
+class RetrievalPage(wx.Panel):
+    """The embedding endpoint this preset uses, and how much it retrieves.
+
+    A preset field rather than a global one because a preset is a server: the
+    endpoint serving the chat model is usually the one serving the embedding
+    model. Switching preset does not re-embed an index that is already built;
+    see `rag.index.RagIndex._configure`.
+    """
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.SetName("RAG")
+        grid = wx.GridBagSizer(5, 5)
+        row = 0
+
+        self.embedding_base_url = self._text(
+            grid, row, "Embedding Base &URL",
+            "OpenAI-compatible endpoint that serves the embedding model.",
+        )
+        row += 1
+        self.embedding_api_key = self._text(
+            grid, row, "Embedding API &Key",
+            "Leave empty if the embedding endpoint does not need one.",
+        )
+        row += 1
+        self.embedding_model = self._text(
+            grid, row, "Embedding &Model",
+            "The embedding model's name. Changing it after indexing means the "
+            "index has to be built again, since old and new vectors are not "
+            "comparable.",
+        )
+        row += 1
+        self.chunk_size = self._spin(
+            grid, row, "Chunk &Size", 1, 1_000_000,
+            "How much text goes into one indexed chunk. Smaller chunks make "
+            "retrieval more precise and lose more surrounding context.",
+        )
+        row += 1
+        self.chunk_overlap = self._spin(
+            grid, row, "Chunk &Overlap", 0, 1000,
+            "How much of each chunk repeats the one before it, so a sentence "
+            "split across the boundary is still findable.",
+        )
+        row += 1
+        self.similarity_top_k = self._spin(
+            grid, row, "Similarity &Top K", 1, 100,
+            "How many chunks to retrieve for a question.",
+        )
+        row += 1
+        # A plain text box, so the fraction can be typed as 0.35 and read back
+        # as one. `wx.SpinCtrlDouble` spares the parsing at the price of the
+        # field's name: it is generic on every platform, a container holding a
+        # text control and a spin button, and the name belongs to the container
+        # while the focus lands on the text control inside — so it was the one
+        # field a screen reader announced without its label, and naming the
+        # inner control did not fix it.
+        self.similarity_cutoff = self._text(
+            grid, row, "Similarity &Cutoff",
+            "The lowest similarity score a chunk may have and still be used, "
+            "between 0 and 1. 0 keeps every chunk Top K returned.",
+        )
+        row += 1
+
+        grid.AddGrowableCol(1)
+        self.SetSizer(grid)
+
+    def _text(self, grid, row, label, tip):
+        return labelled(self, grid, row, label, wx.TextCtrl, tip)
+
+    def _spin(self, grid, row, label, low, high, tip):
+        return labelled(
+            self,
+            grid,
+            row,
+            label,
+            functools.partial(wx.SpinCtrl, min=low, max=high),
+            tip,
+        )
+
+    def load(self, name, preset):
+        self.embedding_base_url.SetValue(preset.embedding_base_url)
+        self.embedding_api_key.SetValue(preset.embedding_api_key)
+        self.embedding_model.SetValue(preset.embedding_model)
+        self.chunk_size.SetValue(preset.chunk_size)
+        self.chunk_overlap.SetValue(preset.chunk_overlap)
+        self.similarity_top_k.SetValue(preset.similarity_top_k)
+        self.similarity_cutoff.SetValue(str(preset.similarity_cutoff))
+
+    def save_into(self, preset):
+        preset.similarity_cutoff = self._cutoff()
+        preset.embedding_base_url = self.embedding_base_url.GetValue().strip()
+        preset.embedding_api_key = self.embedding_api_key.GetValue().strip()
+        preset.embedding_model = self.embedding_model.GetValue().strip()
+        preset.chunk_size = self.chunk_size.GetValue()
+        preset.chunk_overlap = self.chunk_overlap.GetValue()
+        preset.similarity_top_k = self.similarity_top_k.GetValue()
+
+    def _cutoff(self):
+        """The similarity cutoff as typed. Raises Invalid if it is not a score."""
+        text = self.similarity_cutoff.GetValue().strip()
+        try:
+            value = float(text)
+        except ValueError:
+            raise Invalid(
+                f"{text!r} is not a number.", self.similarity_cutoff
+            ) from None
+        if not 0.0 <= value <= 1.0:
+            raise Invalid(
+                "The similarity cutoff has to be between 0 and 1.",
+                self.similarity_cutoff,
+            )
+        return value
 
 
 class PromptPage(wx.Panel):
@@ -440,9 +574,13 @@ class PresetManager(wx.Dialog):
         self.connection = ConnectionPage(self.notebook)
         self.parameters = ParametersPage(self.notebook)
         self.prompt = PromptPage(self.notebook)
+        self.retrieval = RetrievalPage(self.notebook)
         self.notebook.AddPage(self.connection, "Connection")
         self.notebook.AddPage(self.parameters, "Parameters")
         self.notebook.AddPage(self.prompt, "System Prompt")
+        # Named for the menu it belongs with, since the Rag menu's items act
+        # on what this page configures.
+        self.notebook.AddPage(self.retrieval, "RAG")
         self.connection.fields["name"].Bind(wx.EVT_KILL_FOCUS, self.on_renamed)
 
         body = wx.BoxSizer(wx.VERTICAL)
@@ -481,7 +619,12 @@ class PresetManager(wx.Dialog):
     # -------------------------------------------------------------- the pages
 
     def _pages(self):
-        return (self.connection, self.parameters, self.prompt)
+        """The pages in the order the notebook shows them.
+
+        In that order because `_collect` reports a refusal by its position
+        here, and the dialog then selects that tab.
+        """
+        return (self.connection, self.parameters, self.prompt, self.retrieval)
 
     def _show(self, index):
         """Put entry `index` on the pages and name it on the button."""
@@ -497,29 +640,31 @@ class PresetManager(wx.Dialog):
     def _collect(self):
         """Read the pages back into the shown entry, or say why they cannot be.
 
-        Returns None when the entry is valid, or a (message, field, page)
-        triple naming what is wrong and where it is fixed. The rule about
-        whether a preset is usable is the chat's own, so a preset that saves
-        here is a preset that works.
+        Returns None when the entry is valid, or a (message, control, page)
+        triple naming what is wrong and where it is fixed. The page that cannot
+        save says so itself, since it is the one that knows which of its own
+        fields the focus belongs in. The rule about whether a preset is usable
+        is the chat's own, so a preset that saves here is a preset that works.
         """
         if self.index is None:
             return None
         entry = self.entries[self.index]
-        name = self.connection.fields["name"].GetValue().strip()
+        field = self.connection.fields["name"]
+        name = field.GetValue().strip()
         if not name:
-            return "Enter a name for this preset.", "name", CONNECTION_PAGE
+            return "Enter a name for this preset.", field, CONNECTION_PAGE
         if name in self._others():
-            return f"A preset named {name} already exists.", "name", CONNECTION_PAGE
-        try:
-            for page in self._pages():
+            return f"A preset named {name} already exists.", field, CONNECTION_PAGE
+        for number, page in enumerate(self._pages()):
+            try:
                 page.save_into(entry.preset)
-        except ValueError as e:
-            return f"A parameter value is not valid: {e}", None, PARAMETERS_PAGE
+            except Invalid as e:
+                return str(e), e.control, number
         try:
             entry.preset.validate()
         except ConfigError as e:
-            field = "model" if "model" in str(e) else "base_url"
-            return str(e), field, CONNECTION_PAGE
+            key = "model" if "model" in str(e) else "base_url"
+            return str(e), self.connection.fields[key], CONNECTION_PAGE
         entry.name = name
         self._label()
         return None
@@ -530,13 +675,13 @@ class PresetManager(wx.Dialog):
 
     def _refuse(self, problem):
         """Say what is wrong, put the focus where it is fixed, and stay put."""
-        message, field, page = problem
+        message, control, page = problem
         self.notebook.SetSelection(page)
         if page == CONNECTION_PAGE:
             self.connection.set_status(message)
         wx.MessageBox(message, "Preset", wx.OK | wx.ICON_ERROR)
-        if field:
-            self.connection.fields[field].SetFocus()
+        if control:
+            control.SetFocus()
 
     def on_renamed(self, event):
         """Keep the button in step with the name box on leaving it.

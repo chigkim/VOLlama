@@ -38,19 +38,12 @@ class Settings:
     active_preset: str = ""
     presets: dict = field(default_factory=dict)
 
-    # The embedding endpoint is global rather than per preset: one index is
-    # built with one embedding model, and re-embedding it because you switched
-    # chat models would silently invalidate every stored vector.
-    embedding_base_url: str = "http://localhost:11434/v1/"
-    embedding_api_key: str = ""
-    embedding_model: str = "EmbeddingGemma"
-
-    # Retrieval.
-    chunk_size: int = 1024
-    chunk_overlap: int = 20
-    similarity_top_k: int = 2
-    similarity_cutoff: float = 0.0
-    response_mode: str = "compact"
+    # The embedding endpoint and how much text to retrieve are preset fields,
+    # not fields here: see config.presets. Whether the retrieved chunks are
+    # printed is not one of them — it answers "do I want to see the passages
+    # right now", which changes mid-chat and has nothing to do with which
+    # server is being used, so it lives on the Documents menu with the rest of
+    # the retrieval actions.
     show_context: bool = False
 
     # Presentation and accessibility.

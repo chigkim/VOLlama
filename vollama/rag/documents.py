@@ -7,9 +7,7 @@ The list of file types they accept was written out three times as well, and a
 fourth time as a file-dialog filter.
 """
 
-import base64
 import logging
-import os
 
 import requests
 from llama_index.core import SimpleDirectoryReader
@@ -41,7 +39,6 @@ DOCUMENT_EXTENSIONS = (
 )
 
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp")
-VIDEO_EXTENSIONS = (".mp4",)
 
 # Readers in the order they are tried. The first extracts an article cleanly
 # when the page is an article; the second copes with more layouts; the third
@@ -126,8 +123,13 @@ def is_image_url(url):
     return response.headers.get("Content-Type", "").startswith("image/")
 
 
-def encode_image(source):
-    """A local file or an address, as the base64 a vision model is sent."""
+def read_image(source):
+    """The bytes of an image, from a local file or an address.
+
+    Bytes rather than base64, because what type of picture it is has to be read
+    off the first of them: an address need not say, and a file's extension can
+    be wrong.
+    """
     try:
         if source.startswith("http"):
             response = requests.get(source, timeout=TIMEOUT)
@@ -138,8 +140,4 @@ def encode_image(source):
                 content = file.read()
     except (OSError, requests.RequestException) as e:
         raise DocumentError(f"Could not read the image {source}: {e}") from e
-    return base64.b64encode(content).decode("utf-8")
-
-
-def is_video(path):
-    return os.path.splitext(path)[1].lower() in VIDEO_EXTENSIONS
+    return content

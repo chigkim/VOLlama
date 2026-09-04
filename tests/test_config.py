@@ -1,16 +1,17 @@
 """Settings, presets, parameters and the prompt library."""
 
+import csv
 import json
 import os
 import stat
 
 import pytest
 
-from vollama.config import parameters, presets, store
+from vollama.config import parameters, presets, prompts, store
 from vollama.config.presets import Preset
 from vollama.config.prompts import Prompt, PromptLibrary
 from vollama.config.settings import SETTINGS_VERSION, Settings
-from vollama.errors import ConfigError
+from vollama.errors import ConfigError, VOLlamaError
 
 
 # ------------------------------------------------------------------- the store
@@ -27,8 +28,11 @@ def test_api_keys_are_not_readable_in_the_file(tmp_path):
     path = tmp_path / "settings.json"
     data = Settings(
         secret=store.new_secret(),
-        embedding_api_key="embed-secret",
-        presets={"one": Preset(api_key="chat-secret", model="m").to_dict()},
+        presets={
+            "one": Preset(
+                api_key="chat-secret", embedding_api_key="embed-secret", model="m"
+            ).to_dict()
+        },
     ).to_dict()
     store.write(path, data)
 
@@ -37,8 +41,8 @@ def test_api_keys_are_not_readable_in_the_file(tmp_path):
     assert "chat-secret" not in raw
 
     back = store.read(path)
-    assert back["embedding_api_key"] == "embed-secret"
     assert back["presets"]["one"]["api_key"] == "chat-secret"
+    assert back["presets"]["one"]["embedding_api_key"] == "embed-secret"
 
 
 def test_writing_does_not_encrypt_the_caller_s_own_presets(tmp_path):
@@ -72,7 +76,7 @@ def test_unknown_and_missing_fields_take_defaults():
     loaded = Settings.from_dict({"tools": True, "invented_by_a_newer_build": 1})
     assert loaded.tools is True
     assert loaded.version == SETTINGS_VERSION
-    assert loaded.response_mode == "compact"
+    assert loaded.workdir == Settings().workdir
 
 
 # ----------------------------------------------------------------- parameters
@@ -224,6 +228,35 @@ def test_a_preset_survives_being_written_and_read(isolated):
     assert saved["presets"]["one"]["api_key"] != "k"
 
 
+def test_a_preset_written_before_the_retrieval_fields_takes_their_defaults():
+    """An old settings.json still loads; the file version is not bumped for it.
+
+    The cost is named rather than migrated around: a preset saved by an older
+    build has no embedding URL of its own, so it gets the default one back.
+    """
+    back = Preset.from_dict({"base_url": "http://localhost/v1/", "model": "m"})
+    assert back.embedding_base_url == presets.DEFAULT_EMBEDDING_URL
+    assert back.embedding_model == presets.DEFAULT_EMBEDDING_MODEL
+    assert (back.chunk_size, back.similarity_top_k) == (1024, 2)
+    assert back.similarity_cutoff == 0.0
+
+
+def test_the_retrieval_settings_are_read_from_the_active_preset(isolated):
+    """Which is what switching preset switches, embedding endpoint included."""
+    presets.create("local", usable(embedding_base_url="http://one/v1/"))
+    presets.create("hosted", usable(embedding_base_url="http://two/v1/"))
+
+    presets.activate("local")
+    assert presets.retrieval().embedding_base_url == "http://one/v1/"
+    presets.activate("hosted")
+    assert presets.retrieval().embedding_base_url == "http://two/v1/"
+
+
+def test_retrieval_falls_back_to_the_defaults_when_no_preset_is_configured():
+    """So indexing fails on the embedding request, where the reason is visible."""
+    assert presets.retrieval() == Preset()
+
+
 # ------------------------------------------------------------- prompt library
 
 
@@ -258,3 +291,44 @@ def test_find_says_which_saved_prompt_a_text_is_and_when_it_is_none(tmp_path):
 
 def test_a_missing_library_is_empty_rather_than_an_error(tmp_path):
     assert PromptLibrary(tmp_path / "absent.csv").names() == []
+
+
+class _serving:
+    """Stands in for `requests`, answering every get with this text."""
+
+    def __init__(self, text):
+        self.text = text
+
+    def get(self, url, timeout=None):
+        return self
+
+    def raise_for_status(self):
+        pass
+
+    RequestException = Exception
+
+
+def test_a_prompt_longer_than_csv_s_own_limit_survives(tmp_path, monkeypatch):
+    """The published collection has one; csv refuses a 131072-character field."""
+    limit = csv.field_size_limit()
+    long = "x" * (limit + 1000)
+    served = "act,prompt\nlong," + long + "\n"
+    monkeypatch.setattr(prompts, "requests", _serving(served))
+
+    library = PromptLibrary(tmp_path / "prompts.csv")
+    library.merge(prompts.fetch_shared())
+
+    assert PromptLibrary(tmp_path / "prompts.csv").prompts[0].text == long
+    # Raised for our own parsing only: the limit is process-wide.
+    assert csv.field_size_limit() == limit
+
+
+def test_a_download_that_will_not_parse_is_reported_as_ours(monkeypatch):
+    """It reached the user as a traceback: only the request was wrapped."""
+    monkeypatch.setattr(prompts, "MAX_FIELD", 10)
+    unterminated = "act,prompt\nlong,\"" + "x" * 50
+    monkeypatch.setattr(prompts, "requests", _serving(unterminated))
+
+    with pytest.raises(VOLlamaError, match="Could not read the downloaded prompts"):
+        prompts.fetch_shared()
+    assert csv.field_size_limit() != 10

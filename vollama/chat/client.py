@@ -6,14 +6,21 @@ is no provider interface and no per-provider branching, because there is nothing
 for one to do: what differs between those servers is the base URL, the key and
 the model name, which is exactly what a preset holds.
 
+The `openai` library, directly. It was reached through llama_index's OpenAILike
+before, which is one wrapper too many for what is asked of it here: a request
+of our own messages with our own parameters, and a stream read back. What the
+wrapper added was a `ChatMessage` type whose serializer sent fields we did not
+mean to send, a `temperature` of its own in every request whether or not the
+preset set one, and a merge of the streamed tool-call fragments that dropped
+the vendor fields on them. Each of those was worked around here; none of them
+is a problem the library below it has.
+
 A fresh client per request. Presets can be switched, edited or have a parameter
 changed between one message and the next, and building the client from the
 preset each time is cheaper than keeping one in step with the settings.
 """
 
 import tiktoken
-from llama_index.core.callbacks import CallbackManager, TokenCountingHandler
-from llama_index.llms.openai_like import OpenAILike
 from openai import OpenAI
 
 # Imported for their side effect, not their names: PyInstaller cannot see that
@@ -25,9 +32,9 @@ from tiktoken_ext import openai_public  # noqa: F401
 from vollama.config.settings import settings
 
 # Generation parameters every OpenAI-compatible endpoint understands. Anything
-# else in the schema stays local and is never sent, because additional_kwargs
-# are spread as top-level keyword arguments into chat.completions.create() and
-# a name the server does not know raises rather than being ignored.
+# else in the schema stays local and is never sent, because these go out as
+# top-level fields of the request and a name the server does not know raises
+# rather than being ignored.
 OPENAI_PARAMS = frozenset(
     {
         "temperature",
@@ -45,29 +52,60 @@ OPENAI_PARAMS = frozenset(
 # giving up on it: the user has a Stop button.
 TIMEOUT = 3600
 
+# The tokenizer the estimates use. Not the tokenizer any of these models
+# actually has, so everything counted with it is an estimate and every caller
+# has to leave itself room for being wrong.
+ENCODING = "gpt-3.5-turbo"
 
-class Client(OpenAILike):
-    """OpenAILike, minus the parameter it sends whether or not you asked.
 
-    llama_index puts `temperature` into every request unconditionally: it is a
-    constructor field with a default of its own rather than part of
-    additional_kwargs, so a preset with the Temperature box left empty still
-    sent 0.1. That is wrong twice over. It quietly overrides whatever default
-    the server would have used, which is the one thing an empty box should
-    mean, and some models reject the parameter outright — *temperature is
-    deprecated for this model* — which fails the whole request over a value the
-    user never set and cannot see.
+class Client:
+    """One endpoint, one model, and the parameters this preset asked for.
 
-    Whether the preset set one is read off additional_kwargs rather than kept as
-    a flag of its own, since that dict is what actually goes out and the two
-    cannot then drift apart.
+    `options` holds only what the preset set. An empty Temperature box has to
+    mean *whatever the server would do on its own*: sending a default of ours
+    overrides that silently, and some models reject the parameter outright —
+    *temperature is deprecated for this model* — which fails the whole request
+    over a value the user never chose and cannot see.
     """
 
-    def _get_model_kwargs(self, **kwargs):
-        options = super()._get_model_kwargs(**kwargs)
-        if "temperature" not in self.additional_kwargs:
-            options.pop("temperature", None)
-        return options
+    def __init__(self, api, model, options, tools=None, max_tokens=None):
+        self.api = api
+        self.model = model
+        self.options = dict(options)
+        self.tools = list(tools) if tools else None
+        self.max_tokens = max_tokens
+
+    def _request(self, messages, **extra):
+        request = {
+            "model": self.model,
+            "messages": [message.to_wire() for message in messages],
+            **self.options,
+            **extra,
+        }
+        if self.max_tokens:
+            request["max_tokens"] = self.max_tokens
+        if self.tools:
+            request["tools"] = self.tools
+        return request
+
+    def stream(self, messages):
+        """The reply, as the chunks it arrives in.
+
+        `include_usage` asks for the numbers alongside the stream. Servers that
+        do not support it ignore it, which is why there is an estimate to fall
+        back on.
+        """
+        return self.api.chat.completions.create(
+            **self._request(
+                messages, stream=True, stream_options={"include_usage": True}
+            )
+        )
+
+    def complete(self, messages):
+        """The whole reply as text, for a request nobody is watching arrive."""
+        answer = self.api.chat.completions.create(**self._request(messages))
+        choices = answer.choices or []
+        return (choices[0].message.content or "") if choices else ""
 
 
 def tools_enabled():
@@ -80,38 +118,40 @@ def tools_enabled():
     return bool(settings.tools)
 
 
-def token_counter():
-    """A handler that counts tokens, for servers that report no usage of their own."""
-    return TokenCountingHandler(
-        tokenizer=tiktoken.encoding_for_model("gpt-3.5-turbo").encode
-    )
+def count(text):
+    """Roughly how many tokens `text` is, for a decision made before sending."""
+    return len(tiktoken.encoding_for_model(ENCODING).encode(text))
 
 
-def build(preset, tools=None, counter=None):
+def count_messages(messages):
+    """Roughly what this request costs, for a server that reports no usage.
+
+    Text only, and nothing for the shape the messages are sent in, so it reads
+    a little low. It stands in for the server's own number in the one place
+    that has to have one: deciding when the window is nearly full.
+    """
+    return count("\n".join(message.countable() for message in messages))
+
+
+def build(preset, tools=None):
     """A client for this preset. `preset.validate()` has already been called.
 
     `tools` is the schema list to offer, or None for a request that must be
-    answered in prose. Passing it here rather than mutating a shared client's
-    additional_kwargs is what lets compaction ask for a summary without
-    disturbing the client the conversation is using.
+    answered in prose. Passing it here rather than setting it on a shared
+    client is what lets compaction ask for a summary without disturbing the
+    client the conversation is using.
     """
     options = preset.options()
-    additional = {k: v for k, v in options.items() if k in OPENAI_PARAMS}
-    # Ask for the usage numbers alongside the stream. Servers that do not
-    # support it ignore it, which is why there is a token-counting fallback.
-    additional["stream_options"] = {"include_usage": True}
-    if tools:
-        additional["tools"] = list(tools)
     return Client(
+        api=OpenAI(
+            base_url=preset.base_url,
+            api_key=preset.api_key or "none",
+            timeout=TIMEOUT,
+        ),
         model=preset.model,
-        api_base=preset.base_url,
-        api_key=preset.api_key or "none",
-        context_window=preset.context_window,
-        is_chat_model=True,
-        timeout=TIMEOUT,
+        options={k: v for k, v in options.items() if k in OPENAI_PARAMS},
+        tools=tools,
         max_tokens=options.get("max_tokens"),
-        additional_kwargs=additional,
-        callback_manager=CallbackManager([counter] if counter else []),
     )
 
 

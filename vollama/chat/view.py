@@ -30,14 +30,22 @@ class TurnStats:
     completion_tokens: int
     total_seconds: float
     first_token_seconds: float
+    cached_tokens: int = 0
 
     @property
     def total_tokens(self):
         return self.prompt_tokens + self.completion_tokens
 
     def prompt_rate(self):
-        """Prompt tokens per second, counting up to the first token out."""
-        return self.prompt_tokens / max(self.first_token_seconds, 1e-6)
+        """Prompt tokens per second, counting up to the first token out.
+
+        Cached tokens are left out of the numerator: the server did not process
+        them this time, so counting them measures a cache hit rather than a
+        speed. Servers that report no cache leave this the plain prompt rate.
+        """
+        return (self.prompt_tokens - self.cached_tokens) / max(
+            self.first_token_seconds, 1e-6
+        )
 
     def output_rate(self):
         """Generated tokens per second, counting from the first token out."""

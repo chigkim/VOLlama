@@ -9,6 +9,7 @@ with rules of its own — names are unique, the list is kept sorted, a merge
 prefers the newer text — and none of that is a fact about a wx panel.
 """
 
+import contextlib
 import csv
 import logging
 from dataclasses import dataclass
@@ -28,6 +29,22 @@ TIMEOUT = 30
 NAME_COLUMN = "act"
 TEXT_COLUMN = "prompt"
 
+# How long one prompt may be. csv refuses a field over 131072 characters, which
+# the published collection now has — one entry in it is 140 KB — so the limit is
+# raised around our own parsing and put back, since it is process-wide. A cap is
+# still worth having: a "prompt" of a megabyte is a stray quote turning the rest
+# of the file into one field, not something anybody wrote.
+MAX_FIELD = 1_000_000
+
+
+@contextlib.contextmanager
+def _wide_fields():
+    previous = csv.field_size_limit(MAX_FIELD)
+    try:
+        yield
+    finally:
+        csv.field_size_limit(previous)
+
 
 @dataclass(frozen=True)
 class Prompt:
@@ -44,7 +61,7 @@ class PromptLibrary:
 
     def _read(self):
         try:
-            with open(self.path, encoding="utf-8", newline="") as file:
+            with open(self.path, encoding="utf-8", newline="") as file, _wide_fields():
                 rows = list(csv.DictReader(file))
         except FileNotFoundError:
             return []
@@ -115,7 +132,13 @@ def fetch_shared():
         response.raise_for_status()
     except requests.RequestException as e:
         raise VOLlamaError(f"Could not download the prompts: {e}") from e
-    rows = csv.DictReader(response.text.splitlines())
+    try:
+        with _wide_fields():
+            rows = list(csv.DictReader(response.text.splitlines()))
+    except csv.Error as e:
+        # A collection we cannot parse is reported as itself. It used to reach
+        # the user as a traceback, since only the request was wrapped.
+        raise VOLlamaError(f"Could not read the downloaded prompts: {e}") from e
     return [
         Prompt(row.get(NAME_COLUMN) or "", row.get(TEXT_COLUMN) or "")
         for row in rows

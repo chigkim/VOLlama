@@ -13,7 +13,7 @@ for alt+up.
 
 import re
 
-from llama_index.core.llms import ChatMessage
+from vollama.chat.message import Message
 
 
 # Compact once the last exchange used this much of the context window. Low
@@ -160,10 +160,8 @@ def summarize(client, messages):
     The client passed in is one built without a tool list. A model left holding
     tools tends to go and run something instead of writing prose, and the turn
     ends with no summary. Building a second client is a cleaner way to say that
-    than reaching into a shared one's additional_kwargs and putting them back.
+    than taking the tools off a shared one and putting them back.
 
     Not streamed: nobody is reading it as it arrives.
     """
-    request = list(messages) + [ChatMessage(role="user", content=PROMPT)]
-    response = client.chat(request)
-    return (response.message.content or "").strip()
+    return client.complete(list(messages) + [Message("user", PROMPT)]).strip()

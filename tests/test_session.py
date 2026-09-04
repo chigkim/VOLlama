@@ -5,6 +5,8 @@ whole point of the `ChatView` port: this is the most intricate logic in the
 project and none of it needs a window to exercise.
 """
 
+import time
+
 import pytest
 
 from tests import fakes
@@ -13,6 +15,7 @@ from vollama.chat import compaction
 from vollama.chat.session import ChatSession
 from vollama.config import presets
 from vollama.config.presets import Preset
+from vollama.errors import DocumentError
 
 
 @pytest.fixture(autouse=True)
@@ -39,7 +42,7 @@ def ran(monkeypatch):
     """Record tool calls instead of running them."""
     calls = []
 
-    def fake_call(name, arguments):
+    def fake_call(name, arguments, extra=()):
         calls.append((name, arguments))
         return f"{name} ran"
 
@@ -48,22 +51,22 @@ def ran(monkeypatch):
 
 
 def stream(text, tool_calls=None, finish_reason=None, usage=(10, 5)):
-    """One prepared reply: some text, then the usage chunk a server ends with.
+    """One prepared reply: some text, any calls, then the usage chunk.
 
-    Tool calls are on every chunk because that is what llama_index does: it
-    merges the streamed fragments as they arrive, so each chunk carries the
-    calls accumulated so far.
+    A call arrives whole here. Joining the fragments it really comes in is
+    `streaming.Calls`' job and is tested there.
     """
-    return [
-        fakes.Chunk(
-            delta=text,
-            tool_calls=tool_calls,
-            raw=fakes.Raw([fakes.Choice(finish_reason=finish_reason)]),
-        ),
-        fakes.Chunk(
-            tool_calls=tool_calls, raw=fakes.Raw([], fakes.Usage(*usage))
-        ),
-    ]
+    made = [fakes.text_chunk(text, finish_reason=finish_reason)]
+    for index, call in enumerate(tool_calls or []):
+        made.append(
+            fakes.call_chunk(
+                call["function"]["name"],
+                call["function"]["arguments"],
+                id=call["id"],
+                index=index,
+            )
+        )
+    return made + [fakes.usage_chunk(*usage)]
 
 
 # ------------------------------------------------------------- a plain turn
@@ -81,6 +84,53 @@ def test_a_plain_turn_records_the_question_and_the_answer(build):
     assert view.of("finished") == [()]
 
 
+def test_a_cached_prompt_does_not_count_towards_the_prompt_rate(build):
+    """Only the part the server actually processed is a speed.
+
+    Counting a cache hit as tokens per second measures the cache, and a server
+    that reports none is left with the plain prompt rate.
+    """
+    build(
+        [
+            fakes.text_chunk("hi"),
+            fakes.usage_chunk(1000, 5, cached_tokens=900),
+        ]
+    )
+    session = ChatSession()
+    view = fakes.RecordingView()
+
+    session.ask("hi", view)
+
+    stats = view.of("stats")[0][0]
+    assert (stats.prompt_tokens, stats.cached_tokens) == (1000, 900)
+    assert stats.prompt_rate() == pytest.approx(100 / stats.first_token_seconds)
+
+
+def test_the_thinking_that_came_with_a_reply_is_kept_on_the_message(build):
+    """Shown live and stored, because it belongs to the message.
+
+    It used to be folded into the assistant message's content, so a re-rendered
+    transcript, a saved chat and alt+up all kept it; showing it through the view
+    alone lost it from every one of them.
+    """
+    build(
+        [
+            fakes.reasoning_chunk("let me "),
+            fakes.chunk(delta={"content": "42", "reasoning_content": "count"}),
+            fakes.usage_chunk(10, 5),
+        ]
+    )
+    session = ChatSession()
+    view = fakes.RecordingView()
+
+    session.ask("how many", view)
+
+    reply = session.conversation.messages[-1]
+    assert reply.content == "42"
+    assert reply.extra["reasoning"] == "let me count"
+    assert view.of("reasoning_text") == [("let me ",), ("count",)]
+
+
 def test_the_cost_of_the_turn_is_reported(build):
     build(stream("hi", usage=(120, 8)))
     session = ChatSession()
@@ -91,6 +141,33 @@ def test_the_cost_of_the_turn_is_reported(build):
     stats = view.of("stats")[0][0]
     assert (stats.prompt_tokens, stats.completion_tokens) == (120, 8)
     assert stats.total_tokens == 128
+
+
+def test_the_clock_starts_when_the_request_goes_out(monkeypatch):
+    """Not when the stream is first read.
+
+    `_start` pulls the first chunk itself, so by the time `_stream` loops there
+    is one waiting: a clock started there put the whole wait for the prompt to
+    be processed outside the measurement and reported it as instant — a prompt
+    rate in the billions of tokens a second.
+    """
+
+    class SlowClient(fakes.FakeClient):
+        def stream(self, messages):
+            time.sleep(0.05)
+            return super().stream(messages)
+
+    client = SlowClient(stream("hi", usage=(100, 2)))
+    monkeypatch.setattr(client_module, "build", lambda *a, **k: client)
+    session = ChatSession()
+    view = fakes.RecordingView()
+
+    session.ask("hi", view)
+
+    stats = view.of("stats")[0][0]
+    assert stats.first_token_seconds >= 0.05
+    assert stats.total_seconds >= stats.first_token_seconds
+    assert stats.prompt_rate() <= 100 / 0.05
 
 
 def test_a_turn_that_cannot_be_made_leaves_the_conversation_alone(build):
@@ -126,7 +203,7 @@ def test_a_tool_call_is_run_and_its_result_sent_back(build, ran):
     assert ran == [("run", '{"command": "ls"}')]
     roles = [m.role for m in session.conversation.messages]
     assert roles == ["user", "assistant", "tool", "assistant"]
-    assert session.conversation.messages[2].additional_kwargs["tool_call_id"] == "call_1"
+    assert session.conversation.messages[2].extra["tool_call_id"] == "call_1"
     assert view.of("tool_called") == [("ls",)]
     assert view.of("tool_result") == [("run ran",)]
     # The tool result went back with the second request.
@@ -177,7 +254,18 @@ def test_the_call_ceiling_stops_a_model_that_only_ever_reads(build, ran, monkeyp
 
 
 def test_stopping_mid_turn_still_answers_every_call(build, ran):
-    build(stream("about to run", [fakes.call("run", "{}")]))
+    """A dangling call makes the whole history unusable to the server.
+
+    The call is in hand before the words are, so stopping on the first of them
+    stops a turn that has a call to answer for.
+    """
+    build(
+        [
+            fakes.call_chunk("run", "{}"),
+            fakes.text_chunk("about to run"),
+            fakes.usage_chunk(10, 5),
+        ]
+    )
     session = ChatSession()
 
     class StopOnFirstChunk(fakes.RecordingView):
@@ -279,7 +367,7 @@ def test_a_background_command_that_ended_rides_along_with_the_next_message(
 
     note = session.conversation.messages[0]
     assert note.content == "exec_1 finished."
-    assert note.additional_kwargs["background"] is True
+    assert note.extra["background"] is True
     assert view.of("notice") == [("exec_1 finished.",)]
 
 
@@ -289,6 +377,178 @@ def _max(tokens):
     values = parameters.defaults()
     values["max_tokens"]["value"] = tokens
     return values
+
+
+class Node:
+    """A retrieved chunk, as `describe_sources` reads one."""
+
+    def __init__(self, text, score, metadata=None):
+        self.text = text
+        self.score = score
+        self.metadata = metadata or {}
+
+
+class FakeIndex:
+    """An index that hands back one pretend chunk, however it is asked."""
+
+    def __init__(self):
+        self.asked = []
+
+    def ready(self):
+        return True
+
+    def filenames(self):
+        return ["book.txt"]
+
+    def prompt(self, question):
+        self.asked.append(question)
+        return f"Context information is below. the chunk. Query: {question}"
+
+    def search(self, question):
+        self.asked.append(question)
+        return "file_name: book.txt: the chunk"
+
+    def sources(self):
+        return [Node("the chunk", 0.5)]
+
+
+def test_the_model_can_search_the_index_without_the_tools_checkbox(build, isolated):
+    """Search reads an index the user loaded; it touches nothing on the machine.
+
+    Behind the same gate as shell commands, asking a question about a book
+    would mean turning on file writes to do it.
+    """
+    isolated.tools = False
+    build(
+        stream("", tool_calls=[fakes.call("search", '{"query": "who wrote it"}')]),
+        stream("It was written by someone."),
+    )
+    session = ChatSession()
+    session.index = FakeIndex()
+    view = fakes.RecordingView()
+
+    session.ask("who wrote it?", view)
+
+    assert [tool.name for tool in session.tools] == ["search"]
+    assert session.index.asked == ["who wrote it"]
+    assert "the chunk" in view.of("tool_result")[0][0]
+    assert view.of("tool_called")[0][0] == 'Searched the documents for "who wrote it"'
+    assert view.text() == "It was written by someone."
+
+
+def test_clearing_the_index_takes_the_search_tool_with_it(build, isolated):
+    """The only way to stop offering search, since nothing else gates it."""
+    isolated.tools = False
+    build(stream("an answer"))
+    session = ChatSession()
+    session.index = FakeIndex()
+
+    assert session.clear_index() is True
+    assert session.clear_index() is False
+
+    session.ask("who wrote it?", fakes.RecordingView())
+    assert session.tools == []
+
+
+def test_a_search_the_model_asked_for_is_shown_as_context(build, isolated):
+    """Show Context, for the retrieval the user did not type themselves."""
+    isolated.show_context = True
+    build(
+        stream("", tool_calls=[fakes.call("search", '{"query": "who wrote it"}')]),
+        stream("an answer"),
+    )
+    session = ChatSession()
+    session.index = FakeIndex()
+    view = fakes.RecordingView()
+
+    session.ask("who wrote it?", view)
+
+    assert "similarity 0.50" in view.of("notice")[0][0]
+
+
+def test_an_empty_retrieval_answer_is_explained_rather_than_left_blank():
+    """A retrieval prompt can outgrow the context however short the question is.
+
+    A server that truncates an oversized prompt answers with nothing and no
+    error, and silence in the transcript reads as the app not having sent
+    anything at all.
+    """
+    session = ChatSession()
+    session.index = FakeIndex()
+    session.generating = True
+    view = fakes.RecordingView()
+
+    session._answer_from_index(
+        "a question", fakes.FakeClient(stream("")), presets.get("test"), view
+    )
+
+    assert "answered nothing" in view.of("notice")[0][0]
+
+
+def test_a_retrieval_answer_that_arrived_is_not_explained():
+    session = ChatSession()
+    session.index = FakeIndex()
+    session.generating = True
+    view = fakes.RecordingView()
+
+    session._answer_from_index(
+        "a question", fakes.FakeClient(stream("an answer")), presets.get("test"), view
+    )
+
+    assert view.text() == "an answer"
+    assert view.of("notice") == []
+
+
+def test_a_retrieval_turn_sends_the_prompt_and_keeps_only_the_question():
+    """The chunks belong to this question, so they must not reach the history.
+
+    They go out in the request and the reply comes back through the ordinary
+    streaming path, which is what keeps the reasoning, the usage numbers and
+    the finish reason a response synthesizer used to throw away.
+    """
+    session = ChatSession()
+    session.index = FakeIndex()
+    session.generating = True
+    session.conversation.add_user("a question")
+    llm = fakes.FakeClient(
+        [
+            fakes.chunk(
+                delta={"content": "an answer", "reasoning_content": "thinking"},
+                finish_reason="stop",
+            ),
+            fakes.usage_chunk(120, 30),
+        ]
+    )
+
+    session._answer_from_index(
+        "a question", llm, presets.get("test"), fakes.RecordingView()
+    )
+
+    sent = llm.requests[0]
+    assert len(sent) == 1 and "the chunk" in sent[0].content
+    assert [m.content for m in session.conversation.messages] == [
+        "a question",
+        "an answer",
+    ]
+    assert session.conversation.messages[-1].extra["reasoning"] == (
+        "thinking"
+    )
+    assert session.usage.prompt_tokens == 120
+    assert session.finish_reason == "stop"
+
+
+def test_a_retrieval_prompt_too_big_for_the_window_is_refused_before_sending():
+    """The synthesizer used to pack the chunks to fit; nothing does now."""
+    session = ChatSession()
+    session.index = FakeIndex()
+    session.generating = True
+    llm = fakes.FakeClient()
+
+    preset = presets.get("test")
+    preset.context_window = 4
+    with pytest.raises(DocumentError, match="does not fit"):
+        session._answer_from_index("a question", llm, preset, fakes.RecordingView())
+    assert llm.requests == []
 
 
 def test_a_new_chat_keeps_the_index_and_drops_the_conversation():
