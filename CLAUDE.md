@@ -63,7 +63,7 @@ vollama/
   rag/       documents, index
   speech/    sapi, mac, screen_reader, silent
   chat/      view, conversation, client, streaming, compaction, session
-  ui/        window, transcript, preset_dialog, rag_dialog, speech_dialog,
+  ui/        window, transcript, preset_manager, rag_dialog, speech_dialog,
              errors, update
 tests/
 ```
@@ -111,7 +111,9 @@ Nothing else is abstracted: one provider path, no repositories or services, no s
 
 `config/store.py` owns the file. It writes to a temporary file and renames, sets mode `0600`, and encrypts the api keys with a Fernet key **stored in the same file** — that is obfuscation, not secrecy, and the module says so. The fields to encrypt are listed explicitly rather than matched by a substring of their names.
 
-`config/presets.py` owns the rules as well as the shape: `create` refuses a taken name, `update` renames, `delete` promotes the first of what is left, `active_name()` corrects a stale pointer. The GUI calls these rather than deciding again. `Preset` has **no default base URL** — an empty preset must fail `validate()`; the suggested starting URL belongs to the editor.
+`config/presets.py` owns the rules as well as the shape: `create` refuses a taken name, `update` renames, `delete` promotes the first of what is left, `replace` writes the whole list at once, `active_name()` corrects a stale pointer. The GUI calls these rather than deciding again. `Preset` has **no default base URL** — an empty preset must fail `validate()`; the suggested starting URL belongs to the editor.
+
+`ui/preset_manager.py` is the one place presets are edited. It is **the toolbar's own preset button**, moved into a dialog that can act on what the button names: the same menu of preset names, with New, Duplicate and Delete under them, above the Connection, Parameters and System Prompt pages for whichever preset it is showing. One widget doing one job in the place where the job can be finished, rather than a second set of controls next to a list. The toolbar's menu keeps the preset names and a way in here, since switching preset is the part worth one keystroke. Edits live on copies, so Cancel discards the lot, and OK hands the whole list to `presets.replace` — which is why that function exists: an entry that is no longer in the list is a deletion, and two presets swapping names is one write instead of a rename that has to dodge the other.
 
 `config/parameters.py` holds the parameter schema as a dict, `SCHEMA`. `None` means *not sent*, which is why `Model.Client` exists (below). The preset editor builds its controls from the schema, so adding a parameter is an edit to that table.
 
@@ -242,7 +244,8 @@ It does kill a job still inside its yield window. `shell.cancellation` is a `Can
 
 ## Accessibility
 
-- Every control gets an accessible name; two buttons with the same label get different ones (the preset editor's two "Choose..." buttons).
+- Every control gets an accessible name; two buttons with the same label get different ones (the preset manager's two "Choose..." buttons, and its preset button, which keeps the toolbar's accessible name because it is the same control).
+- **A label is created before the control it names.** A screen reader on Windows pairs a field with the static text created before it, not with the one the sizer puts to its left, so a control passed into a row helper already built is announced with the label of the row *above* — the Base URL box read as "Name". This is why `ConnectionPage._row` and `RagDialog._add` take something that *builds* the control rather than the control.
 - Focus follows the value that changed, not the button that changed it, so a screen reader announces the new value.
 - Keyboard-only navigation throughout, with shortcuts declared once on the menu item; toolbar buttons raise that same item's event.
 - Audio feedback (`send.wav` / `receive.wav`) for state changes.

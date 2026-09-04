@@ -173,6 +173,30 @@ def delete(name):
     settings.save()
 
 
+def replace(items, active=""):
+    """Replace every preset at once, and say which one is active.
+
+    `items` is (name, preset) pairs. The manager edits the whole list, so it
+    hands the whole list back, and that makes two things simple that are not
+    otherwise: a name that is no longer here is a preset deleted, and two
+    presets swapping names is one write rather than a rename that has to dodge
+    the other. An `active` naming nothing falls to the first preset there is,
+    the same way `delete` chooses.
+    """
+    written = {}
+    for name, preset in items:
+        name = _named(name)
+        if name in written:
+            raise ConfigError(f"There are two presets named {name}.")
+        written[name] = preset.to_dict()
+    settings.presets = written
+    remaining = names()
+    if active not in written:
+        active = remaining[0] if remaining else ""
+    settings.active_preset = active
+    settings.save()
+
+
 def activate(name):
     """Make an existing preset the active one."""
     if name in settings.presets:

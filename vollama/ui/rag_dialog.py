@@ -79,13 +79,21 @@ class RagDialog(wx.Dialog):
         self.Bind(wx.EVT_BUTTON, self.on_ok, id=wx.ID_OK)
 
     # Each helper adds one labelled row and hands back the control.
-    def _add(self, label, control, tip):
+    def _add(self, label, make, tip):
+        """`make` builds the control, and is called once the label exists.
+
+        A screen reader on Windows pairs a field with the static text created
+        before it, not with the one the sizer puts to its left, so a control
+        built as an argument to this method is announced with the label of the
+        row above.
+        """
         self.grid.Add(
             wx.StaticText(self.panel, label=label + ":"),
             pos=(self.row, 0),
             flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL,
             border=5,
         )
+        control = make()
         control.SetName(label)
         control.SetToolTip(tip)
         self.grid.Add(control, pos=(self.row, 1), flag=wx.EXPAND | wx.ALL, border=5)
@@ -94,26 +102,37 @@ class RagDialog(wx.Dialog):
 
     def _spin(self, label, value, low, high, tip):
         return self._add(
-            label, wx.SpinCtrl(self.panel, value=str(value), min=low, max=high), tip
+            label,
+            lambda: wx.SpinCtrl(self.panel, value=str(value), min=low, max=high),
+            tip,
         )
 
     def _float(self, label, value, tip):
-        control = wx.SpinCtrlDouble(self.panel, min=0.0, max=1.0, inc=0.01)
-        control.SetValue(value)
-        return self._add(label, control, tip)
+        def make():
+            control = wx.SpinCtrlDouble(self.panel, min=0.0, max=1.0, inc=0.01)
+            control.SetValue(value)
+            return control
+
+        return self._add(label, make, tip)
 
     def _choice(self, label, value, choices, tip):
-        control = wx.Choice(self.panel, choices=choices)
-        control.SetStringSelection(value if value in choices else choices[0])
-        return self._add(label, control, tip)
+        def make():
+            control = wx.Choice(self.panel, choices=choices)
+            control.SetStringSelection(value if value in choices else choices[0])
+            return control
+
+        return self._add(label, make, tip)
 
     def _check(self, label, value, tip):
-        control = wx.CheckBox(self.panel)
-        control.SetValue(value)
-        return self._add(label, control, tip)
+        def make():
+            control = wx.CheckBox(self.panel)
+            control.SetValue(value)
+            return control
+
+        return self._add(label, make, tip)
 
     def _text(self, label, value, tip):
-        return self._add(label, wx.TextCtrl(self.panel, value=str(value)), tip)
+        return self._add(label, lambda: wx.TextCtrl(self.panel, value=str(value)), tip)
 
     def on_ok(self, event):
         settings.chunk_size = self.chunk_size.GetValue()

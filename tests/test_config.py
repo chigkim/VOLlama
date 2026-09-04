@@ -168,6 +168,39 @@ def test_deleting_the_active_preset_promotes_the_first_of_the_rest():
     assert presets.active() is None
 
 
+def test_replace_writes_the_whole_list_and_chooses_the_active_one():
+    presets.create("a", usable(model="one"))
+    presets.create("b", usable(model="two"))
+    presets.replace([("b", usable(model="two")), ("c", usable(model="three"))], "c")
+    assert presets.names() == ["b", "c"]
+    assert presets.active_name() == "c"
+    assert presets.get("c").model == "three"
+
+
+def test_replace_lets_two_presets_swap_names():
+    """The rename that `update` cannot do, because each clashes with the other."""
+    presets.create("a", usable(model="one"))
+    presets.create("b", usable(model="two"))
+    presets.replace([("b", usable(model="one")), ("a", usable(model="two"))], "a")
+    assert presets.get("a").model == "two"
+    assert presets.get("b").model == "one"
+
+
+def test_replace_refuses_an_empty_or_repeated_name():
+    with pytest.raises(ConfigError, match="Enter a name"):
+        presets.replace([("", usable())])
+    with pytest.raises(ConfigError, match="two presets named"):
+        presets.replace([("a", usable()), ("a", usable())])
+
+
+def test_replace_falls_back_to_the_first_preset_and_to_none():
+    presets.replace([("b", usable()), ("a", usable())], "gone")
+    assert presets.active_name() == "a"
+    presets.replace([])
+    assert presets.names() == []
+    assert presets.active_name() == ""
+
+
 def test_an_active_name_that_no_longer_exists_is_corrected(isolated):
     presets.create("one", usable())
     isolated.active_preset = "deleted"
@@ -209,6 +242,18 @@ def test_a_merge_prefers_the_incoming_text(tmp_path):
     library.merge([Prompt("shared", "theirs"), Prompt("new", "text")])
     assert library.names() == ["new", "shared"]
     assert [p.text for p in library.prompts] == ["text", "theirs"]
+
+
+def test_find_says_which_saved_prompt_a_text_is_and_when_it_is_none(tmp_path):
+    """The preset editor highlights `find`'s answer and clears on None.
+
+    A None that came back as an index would leave the last preset's prompt
+    highlighted, and choosing an already-highlighted prompt fires no event.
+    """
+    library = PromptLibrary(tmp_path / "prompts.csv")
+    library.put("poet", "be a poet")
+    assert library.find("be a poet") == 0
+    assert library.find("something else") is None
 
 
 def test_a_missing_library_is_empty_rather_than_an_error(tmp_path):

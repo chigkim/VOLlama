@@ -28,15 +28,15 @@ If you want responses to be read aloud automatically, you can enable the "Speak 
 
 ## Presets
 
-On first launch VOLlama asks you to create a preset. After that, press control+p to open the preset menu, where you can switch presets or choose New, Edit, Duplicate, or Delete. The toolbar button shows the active preset, which is remembered between sessions.
+On first launch VOLlama asks you to create a preset. After that, press control+p to open the preset menu. It lists your presets, so switching to one is a single keystroke, and it has one other item: Preset Manager. The toolbar button shows the active preset, which is remembered between sessions.
 
-The preset editor has three tabs:
+The Preset Manager is where presets are created, edited, copied and deleted. At the top is the same preset button the toolbar has: its menu lists your presets, and below them New, Duplicate and Delete. Under the button are three tabs, editing whichever preset the button names:
 
 * **Connection**: name, base URL, API key, model, and context window. The "Choose..." next to Base URL fills in a server VOLlama knows about; the one next to Model asks that server for its model list and fills in the model field. Servers that do not publish a model list still work, just type the model name.
 * **Parameters**: generation parameters for this preset (see the table below).
-* **System Prompt**: this preset's system prompt, plus a shared library of saved prompts you can store, reuse, and download from Awesome ChatGPT Prompts.
+* **System Prompt**: this preset's system prompt, plus a shared library of saved prompts you can store, reuse, and download from Awesome ChatGPT Prompts. Choosing a saved prompt copies it into the box below; press Enter on the one already highlighted to copy it again after editing the box.
 
-Nothing is saved until you press OK, so Cancel discards every change including parameters and prompts.
+Nothing is saved until you press OK, so Cancel discards every change including new presets, deletions, parameters and prompts. The preset the button is showing when you press OK becomes the active one.
 
 The **Choose...** button next to Base URL fills the field in with one of these, so you do not
 have to type it from memory. Any other OpenAI-compatible URL still works, just type it.

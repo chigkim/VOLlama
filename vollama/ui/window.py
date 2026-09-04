@@ -34,7 +34,7 @@ from vollama.tools import shell
 from vollama.tools.workspace import working_dir
 from vollama.ui import transcript, update
 from vollama.ui.errors import show_error, show_info
-from vollama.ui.preset_dialog import CONNECTION_PAGE, PresetDialog
+from vollama.ui.preset_manager import PresetManager
 from vollama.ui.rag_dialog import RagDialog
 from vollama.ui.speech_dialog import SpeechDialog
 
@@ -111,7 +111,7 @@ class ChatWindow(wx.Frame):
         if not compatible:
             show_error(VOLlamaError(INCOMPATIBLE_SETTINGS), "Settings")
         elif not settings.presets:
-            self.on_new_preset(None)
+            self.on_manage_presets(None)
 
     # ------------------------------------------------------------------ layout
 
@@ -602,6 +602,13 @@ class ChatWindow(wx.Frame):
     # ----------------------------------------------------------------- presets
 
     def on_presets(self, event):
+        """The presets you have, and the way to the one place that edits them.
+
+        Switching preset is one keystroke and is what this menu is for; New,
+        Edit, Duplicate and Delete all moved into the Preset Manager, where the
+        list they act on is visible instead of being the active preset by
+        implication.
+        """
         menu = wx.Menu()
         for name in presets.names():
             item = menu.Append(wx.NewIdRef(), name, kind=wx.ITEM_CHECK)
@@ -611,20 +618,10 @@ class ChatWindow(wx.Frame):
                 functools.partial(self.on_choose_preset, name=name),
                 item,
             )
-        menu.AppendSeparator()
-        new_item = menu.Append(wx.NewIdRef(), "&New...")
-        self.Bind(wx.EVT_MENU, self.on_new_preset, new_item)
-        editable = []
-        for label, handler in (
-            ("&Edit...", self.on_edit_preset),
-            ("D&uplicate...", self.on_duplicate_preset),
-            ("&Delete...", self.on_delete_preset),
-        ):
-            item = menu.Append(wx.NewIdRef(), label)
-            self.Bind(wx.EVT_MENU, handler, item)
-            editable.append(item)
-        for item in editable:
-            item.Enable(bool(presets.active_name()))
+        if presets.names():
+            menu.AppendSeparator()
+        manage_item = menu.Append(wx.NewIdRef(), "Preset &Manager...")
+        self.Bind(wx.EVT_MENU, self.on_manage_presets, manage_item)
         self.toolbar.PopupMenu(menu, self.preset_button.Position)
         menu.Destroy()
         self.focus_prompt()
@@ -633,59 +630,11 @@ class ChatWindow(wx.Frame):
         presets.activate(name)
         self._preset_changed()
 
-    def on_new_preset(self, event, name="", preset=None):
-        self._edit(PresetDialog(self, "New Preset", name=name, preset=preset), None)
-
-    def on_edit_preset(self, event):
-        name = presets.active_name()
-        preset = presets.get(name)
-        if not preset:
-            self.on_new_preset(event)
-            return
-        self._edit(
-            PresetDialog(
-                self, f"Edit Preset: {name}", name=name, preset=preset,
-                page=CONNECTION_PAGE,
-            ),
-            name,
-        )
-
-    def on_duplicate_preset(self, event):
-        name = presets.active_name()
-        preset = presets.get(name)
-        if preset:
-            self.on_new_preset(event, name=f"{name} copy", preset=preset)
-
-    def on_delete_preset(self, event):
-        name = presets.active_name()
-        if not name:
-            return
-        if wx.MessageBox(
-            f"Delete the preset {name}?", "Delete Preset", wx.YES_NO | wx.ICON_WARNING
-        ) != wx.YES:
-            return
-        presets.delete(name)
-        self._preset_changed()
-
-    def _edit(self, dialog, replacing):
-        """Show a preset dialog and store what it produced.
-
-        `replacing` is the name being edited, or None for a new preset. Whether
-        the name is free and where the preset is kept are decided by
-        config.presets, not here.
-        """
-        with dialog:
+    def on_manage_presets(self, event):
+        """The manager saves its own edits; this only reacts to them."""
+        with PresetManager(self, select=presets.active_name()) as dialog:
             if dialog.ShowModal() != wx.ID_OK:
                 return
-            name, preset = dialog.name(), dialog.preset()
-        try:
-            if replacing is None:
-                presets.create(name, preset)
-            else:
-                presets.update(replacing, name, preset)
-        except VOLlamaError as e:
-            show_error(e, "Preset")
-            return
         self._preset_changed()
 
     def _preset_changed(self):

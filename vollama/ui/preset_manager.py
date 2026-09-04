@@ -1,21 +1,25 @@
-"""Editing one preset: connection, generation parameters, system prompt.
+"""Managing presets: the preset button, and connection, parameters, prompt.
 
-Three notebook pages, each of which knows how to fill itself from a `Preset` and
+One dialog. The toolbar's own preset button, whose menu switches preset and
+holds New, Duplicate and Delete, above three notebook pages editing whichever
+preset the button names; each page knows how to fill itself from a `Preset` and
 how to write itself back into one. Everything else about presets — whether a
-name is free, whether the preset can be used, where it is stored — belongs to
-`config.presets`, and this dialog calls into it rather than deciding again.
+name is free, whether the preset can be used, where it is stored, which one
+becomes active when another is deleted — belongs to `config.presets`, and this
+dialog calls into it rather than deciding again.
 
-Edits go into a copy, so Cancel discards them. Read the result with `name()` and
-`preset()` after `ShowModal()` returns `wx.ID_OK`.
+Edits go into copies, so Cancel discards them all. `ShowModal()` returning
+`wx.ID_OK` means the presets have already been saved.
 """
 
 import copy
+import functools
 import threading
 
 import wx
 
 from vollama.chat.client import fetch_models
-from vollama.config import parameters
+from vollama.config import parameters, presets
 from vollama.config.presets import DEFAULT_CONTEXT_WINDOW, Preset
 from vollama.config.prompts import PromptLibrary, fetch_shared
 from vollama.errors import ConfigError, VOLlamaError
@@ -69,7 +73,7 @@ class ConnectionPage(wx.Panel):
             ),
             ("api_key", "API &Key", "Leave empty if the endpoint does not need one."),
         ):
-            self.fields[key] = self._row(grid, row, label, wx.TextCtrl(self), tip)
+            self.fields[key] = self._row(grid, row, label, wx.TextCtrl, tip)
             row += 1
 
         self.server_button = self._button(
@@ -78,7 +82,7 @@ class ConnectionPage(wx.Panel):
             self.on_server,
         )
         self.fields["model"] = self._row(
-            grid, row, "&Model", wx.TextCtrl(self),
+            grid, row, "&Model", wx.TextCtrl,
             "Model name as the endpoint reports it. Use Choose to pick from a list.",
         )
         self.choose_button = self._button(
@@ -89,7 +93,9 @@ class ConnectionPage(wx.Panel):
 
         self.fields["context_window"] = self._row(
             grid, row, "Context &Window",
-            wx.SpinCtrl(self, min=512, max=10_000_000, initial=DEFAULT_CONTEXT_WINDOW),
+            functools.partial(
+                wx.SpinCtrl, min=512, max=10_000_000, initial=DEFAULT_CONTEXT_WINDOW
+            ),
             "How many tokens this model can hold. Match what your server is "
             "running. It is not sent to the server: VOLlama uses it to decide "
             "when to compact the conversation, and to size retrieval prompts.",
@@ -102,13 +108,23 @@ class ConnectionPage(wx.Panel):
         grid.AddGrowableCol(1)
         self.SetSizer(grid)
 
-    def _row(self, grid, row, label, control, tip):
+    def _row(self, grid, row, label, make, tip):
+        """A labelled control, with the label created before the control.
+
+        `make` is what builds it, rather than the control itself, because a
+        screen reader on Windows pairs a field with the static text created
+        before it and not with the one the sizer puts to its left. Every field
+        used to be constructed as an argument to this method, so each was
+        announced with the label of the row above: the Base URL box read as
+        "Name".
+        """
         grid.Add(
             wx.StaticText(self, label=label + ":"),
             pos=(row, 0),
             flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL,
             border=5,
         )
+        control = make(self)
         control.SetName(label.replace("&", ""))
         control.SetToolTip(tip)
         grid.Add(control, pos=(row, 1), flag=wx.EXPAND | wx.ALL, border=5)
@@ -269,9 +285,16 @@ class PromptPage(wx.Panel):
         self.SetName("System Prompt")
         self.library = PromptLibrary()
 
+        # Each label is created before the control it names, since that order is
+        # what pairs the two for a screen reader. See ConnectionPage._row.
+        saved_label = wx.StaticText(self, label="Saved &Prompts:")
         self.saved = wx.ListBox(self, choices=self.library.names(), style=wx.LB_SINGLE)
         self.saved.SetName("Saved Prompts")
-        self.saved.SetToolTip("Choose a saved prompt to copy it into the text below.")
+        self.saved.SetToolTip(
+            "Choose a saved prompt to copy it into the text below. Enter copies "
+            "the highlighted one again."
+        )
+        text_label = wx.StaticText(self, label="&System Prompt:")
         self.text = wx.TextCtrl(self, style=wx.TE_MULTILINE)
         self.text.SetName("System Prompt")
         self.text.SetToolTip("The system prompt this preset sends.")
@@ -289,22 +312,27 @@ class PromptPage(wx.Panel):
             buttons.Add(button, flag=wx.ALL, border=5)
 
         sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.Add(
-            wx.StaticText(self, label="Saved &Prompts:"), flag=wx.LEFT | wx.TOP, border=5
-        )
+        sizer.Add(saved_label, flag=wx.LEFT | wx.TOP, border=5)
         sizer.Add(self.saved, proportion=1, flag=wx.EXPAND | wx.ALL, border=5)
-        sizer.Add(wx.StaticText(self, label="&System Prompt:"), flag=wx.LEFT, border=5)
+        sizer.Add(text_label, flag=wx.LEFT, border=5)
         sizer.Add(self.text, proportion=2, flag=wx.EXPAND | wx.ALL, border=5)
         sizer.Add(buttons, flag=wx.ALIGN_CENTER)
         self.SetSizer(sizer)
 
         self.saved.Bind(wx.EVT_LISTBOX, self.on_selected)
+        # Choosing the prompt that is already highlighted fires no selection
+        # event, so Enter and a double click mean "use this one" as well.
+        self.saved.Bind(wx.EVT_LISTBOX_DCLICK, self.on_selected)
+        self.saved.Bind(wx.EVT_KEY_DOWN, self.on_key)
 
     def load(self, name, preset):
         self.text.SetValue(preset.system)
+        # Cleared when this preset's prompt is not one of the saved ones, rather
+        # than left highlighting the last preset's: a highlight that no longer
+        # matches the box is both wrong and a dead end, since choosing that same
+        # prompt again fires no selection event.
         found = self.library.find(preset.system)
-        if found is not None:
-            self.saved.SetSelection(found)
+        self.saved.SetSelection(wx.NOT_FOUND if found is None else found)
 
     def save_into(self, preset):
         preset.system = self.text.GetValue()
@@ -313,6 +341,13 @@ class PromptPage(wx.Panel):
         selection = self.saved.GetSelection()
         if selection != wx.NOT_FOUND:
             self.text.SetValue(self.library.prompts[selection].text)
+
+    def on_key(self, event):
+        if event.GetKeyCode() in (wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+            # Not skipped: Enter left to the dialog presses OK and closes it.
+            self.on_selected(event)
+            return
+        event.Skip()
 
     def _refresh(self, select=None):
         self.saved.Set(self.library.names())
@@ -361,15 +396,45 @@ class PromptPage(wx.Panel):
             show_error(e, "Prompts")
 
 
-class PresetDialog(wx.Dialog):
-    """Edits a copy of one preset across three pages."""
+class Entry:
+    """One preset as the manager holds it while being edited: a name and a copy."""
 
-    def __init__(self, parent, title, name="", preset=None, page=CONNECTION_PAGE):
-        super().__init__(parent, title=title, size=(700, 560))
-        self._name = name
-        self._preset = copy.deepcopy(preset) if preset else Preset(base_url=STARTING_URL)
+    def __init__(self, name, preset):
+        self.name = name
+        self.preset = preset
+
+
+class PresetManager(wx.Dialog):
+    """Every preset, behind the same one button the toolbar uses.
+
+    The button says which preset the pages below it are showing, and its menu
+    is the one that used to be on the toolbar: the presets to switch between,
+    then New, Duplicate and Delete. One widget, in the place where the preset
+    it names can actually be edited; the toolbar menu keeps only the switching,
+    which is the part worth a keystroke.
+
+    Nothing is written until OK. Edits live on `Entry` copies of the presets, so
+    Cancel discards them and a delete is just an entry dropped from the list;
+    OK hands the whole list to `presets.replace`, which is where storing them
+    and choosing the active one is decided.
+    """
+
+    def __init__(self, parent, select=None):
+        super().__init__(parent, title="Preset Manager", size=(760, 600))
+        self.entries = [Entry(name, presets.get(name)) for name in presets.names()]
+        self.index = None
 
         panel = wx.Panel(self)
+        self.preset_button = wx.Button(panel, label="Preset: none")
+        # The toolbar button's accessible name, because it is the same control
+        # doing the same job.
+        self.preset_button.SetName("Preset")
+        self.preset_button.SetToolTip(
+            "The preset the pages below are editing. Its menu switches between "
+            "your presets and creates, copies and deletes them."
+        )
+        self.preset_button.Bind(wx.EVT_BUTTON, self.on_menu)
+
         self.notebook = wx.Notebook(panel)
         self.notebook.SetName("Preset Pages")
         self.connection = ConnectionPage(self.notebook)
@@ -378,62 +443,222 @@ class PresetDialog(wx.Dialog):
         self.notebook.AddPage(self.connection, "Connection")
         self.notebook.AddPage(self.parameters, "Parameters")
         self.notebook.AddPage(self.prompt, "System Prompt")
-        for page_panel in self._pages():
-            page_panel.load(self._name, self._preset)
+        self.connection.fields["name"].Bind(wx.EVT_KILL_FOCUS, self.on_renamed)
 
-        panel_sizer = wx.BoxSizer(wx.VERTICAL)
-        panel_sizer.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 5)
-        panel.SetSizer(panel_sizer)
+        body = wx.BoxSizer(wx.VERTICAL)
+        body.Add(self.preset_button, 0, wx.ALL, 5)
+        body.Add(self.notebook, 1, wx.EXPAND | wx.ALL, 5)
+        panel.SetSizer(body)
 
         # CreateStdDialogButtonSizer parents its buttons to the dialog, so the
         # sizer holding it has to be the dialog's and not the panel's.
-        buttons = self.CreateStdDialogButtonSizer(wx.OK | wx.CANCEL)
+        std = self.CreateStdDialogButtonSizer(wx.OK | wx.CANCEL)
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(panel, 1, wx.EXPAND)
-        sizer.Add(buttons, 0, wx.ALIGN_CENTER | wx.ALL, 5)
+        sizer.Add(std, 0, wx.ALIGN_CENTER | wx.ALL, 5)
         self.SetSizer(sizer)
 
         self.SetAffirmativeId(wx.ID_OK)
         self.SetEscapeId(wx.ID_CANCEL)
         self.Bind(wx.EVT_BUTTON, self.on_ok, id=wx.ID_OK)
-        self.notebook.SetSelection(page)
-        self.connection.fields["name"].SetFocus()
+
+        if not self.entries:
+            # Nothing to manage yet, so the manager opens on the one thing
+            # there is to do.
+            self.on_new(None)
+            return
+        labels = self._labels()
+        self._show(labels.index(select) if select in labels else 0)
+        self.preset_button.SetFocus()
+
+    def name(self):
+        """The name of the preset the manager was left on, or ""."""
+        return self.entries[self.index].name if self.index is not None else ""
+
+    def _labels(self):
+        return [entry.name for entry in self.entries]
+
+    # -------------------------------------------------------------- the pages
 
     def _pages(self):
         return (self.connection, self.parameters, self.prompt)
 
-    def name(self):
-        return self._name
+    def _show(self, index):
+        """Put entry `index` on the pages and name it on the button."""
+        self.index = index
+        entry = self.entries[index]
+        self._label()
+        for page in self._pages():
+            page.load(entry.name, entry.preset)
 
-    def preset(self):
-        return self._preset
+    def _label(self):
+        self.preset_button.SetLabel(f"Preset: {self.name() or 'none'}")
 
-    def on_ok(self, event):
+    def _collect(self):
+        """Read the pages back into the shown entry, or say why they cannot be.
+
+        Returns None when the entry is valid, or a (message, field, page)
+        triple naming what is wrong and where it is fixed. The rule about
+        whether a preset is usable is the chat's own, so a preset that saves
+        here is a preset that works.
+        """
+        if self.index is None:
+            return None
+        entry = self.entries[self.index]
         name = self.connection.fields["name"].GetValue().strip()
         if not name:
-            self._invalid("Enter a name for this preset.", "name", CONNECTION_PAGE)
-            return
+            return "Enter a name for this preset.", "name", CONNECTION_PAGE
+        if name in self._others():
+            return f"A preset named {name} already exists.", "name", CONNECTION_PAGE
         try:
-            for page_panel in self._pages():
-                page_panel.save_into(self._preset)
+            for page in self._pages():
+                page.save_into(entry.preset)
         except ValueError as e:
-            self._invalid(f"A parameter value is not valid: {e}", None, PARAMETERS_PAGE)
-            return
+            return f"A parameter value is not valid: {e}", None, PARAMETERS_PAGE
         try:
-            # The same rule the chat applies, so a preset that saves is a preset
-            # that works.
-            self._preset.validate()
+            entry.preset.validate()
         except ConfigError as e:
             field = "model" if "model" in str(e) else "base_url"
-            self._invalid(str(e), field, CONNECTION_PAGE)
-            return
-        self._name = name
-        self.EndModal(wx.ID_OK)
+            return str(e), field, CONNECTION_PAGE
+        entry.name = name
+        self._label()
+        return None
 
-    def _invalid(self, message, field, page):
+    def _others(self):
+        """The names of the presets other than the one being shown."""
+        return [e.name for i, e in enumerate(self.entries) if i != self.index]
+
+    def _refuse(self, problem):
+        """Say what is wrong, put the focus where it is fixed, and stay put."""
+        message, field, page = problem
         self.notebook.SetSelection(page)
         if page == CONNECTION_PAGE:
             self.connection.set_status(message)
-            if field:
-                self.connection.fields[field].SetFocus()
         wx.MessageBox(message, "Preset", wx.OK | wx.ICON_ERROR)
+        if field:
+            self.connection.fields[field].SetFocus()
+
+    def on_renamed(self, event):
+        """Keep the button in step with the name box on leaving it.
+
+        A rename is the one edit the button itself shows, and a button still
+        saying the old name lies about which preset is being edited. Only the
+        name is taken here: a new preset must not be refused for its base URL
+        merely because the focus moved out of a field.
+        """
+        event.Skip()
+        name = self.connection.fields["name"].GetValue().strip()
+        if self.index is not None and name and name not in self._others():
+            self.entries[self.index].name = name
+            self._label()
+
+    # --------------------------------------------------------------- the menu
+
+    def on_menu(self, event):
+        """The toolbar's preset menu, with the editing items it used to have."""
+        menu = wx.Menu()
+        for index, entry in enumerate(self.entries):
+            item = menu.Append(wx.NewIdRef(), entry.name, kind=wx.ITEM_CHECK)
+            item.Check(index == self.index)
+            self.Bind(
+                wx.EVT_MENU, functools.partial(self.on_choose, index=index), item
+            )
+        if self.entries:
+            menu.AppendSeparator()
+        for label, handler, needs_preset in (
+            ("&New", self.on_new, False),
+            ("D&uplicate", self.on_duplicate, True),
+            ("&Delete...", self.on_delete, True),
+        ):
+            item = menu.Append(wx.NewIdRef(), label)
+            self.Bind(wx.EVT_MENU, handler, item)
+            if needs_preset:
+                item.Enable(self.index is not None)
+        self.preset_button.PopupMenu(menu)
+        menu.Destroy()
+
+    def on_choose(self, event, index):
+        if index == self.index:
+            return
+        problem = self._collect()
+        if problem:
+            self._refuse(problem)
+            return
+        self._show(index)
+        # Focus follows the value that changed, which here is the button's own
+        # label: every page behind it has just been refilled from it.
+        self.preset_button.SetFocus()
+
+    def on_new(self, event, preset=None, name="New Preset"):
+        # Called with no event to add a copy or the first preset, neither of
+        # which can be refused for what is on the pages.
+        if event is not None:
+            problem = self._collect()
+            if problem:
+                self._refuse(problem)
+                return
+        entry = Entry(self._free(name), preset or Preset(base_url=STARTING_URL))
+        self.entries.append(entry)
+        self._show(len(self.entries) - 1)
+        self.connection.fields["name"].SetFocus()
+        self.connection.fields["name"].SelectAll()
+
+    def on_duplicate(self, event):
+        problem = self._collect()
+        if problem:
+            self._refuse(problem)
+            return
+        entry = self.entries[self.index]
+        self.on_new(None, copy.deepcopy(entry.preset), f"{entry.name} copy")
+
+    def on_delete(self, event):
+        if self.index is None:
+            return
+        entry = self.entries[self.index]
+        if wx.MessageBox(
+            f"Delete the preset {entry.name}?",
+            "Delete Preset",
+            wx.YES_NO | wx.ICON_WARNING,
+        ) != wx.YES:
+            return
+        self.entries.pop(self.index)
+        self.index = None
+        if self.entries:
+            self._show(0)
+            self.preset_button.SetFocus()
+            return
+        # Nothing left to edit: the pages are emptied rather than left showing
+        # a preset that is gone.
+        self._label()
+        for page in self._pages():
+            page.load("", Preset())
+        self.connection.set_status("No presets. Choose New to create one.")
+        self.preset_button.SetFocus()
+
+    def _free(self, name):
+        """`name`, or the first numbered variant of it that is not taken."""
+        taken = self._labels()
+        if name not in taken:
+            return name
+        number = 2
+        while f"{name} {number}" in taken:
+            number += 1
+        return f"{name} {number}"
+
+    # ----------------------------------------------------------------- saving
+
+    def on_ok(self, event):
+        problem = self._collect()
+        if problem:
+            self._refuse(problem)
+            return
+        try:
+            # The preset the manager was left on is the one the user means to
+            # end up on, so it is the one that becomes active.
+            presets.replace(
+                [(entry.name, entry.preset) for entry in self.entries], self.name()
+            )
+        except VOLlamaError as e:
+            show_error(e, "Preset")
+            return
+        self.EndModal(wx.ID_OK)

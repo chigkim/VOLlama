@@ -26,12 +26,16 @@ class SpeechDialog(wx.Dialog):
         self.selected = voice if voice in self.voices else ""
 
         panel = wx.Panel(self)
+        # Each label is created before the control it names: that order, not the
+        # sizer's, is what pairs the two for a screen reader on Windows.
+        voice_label = wx.StaticText(panel, label="&Voice:")
         self.voice_button = wx.Button(panel, label=self._label())
         self.voice_button.SetName("Voice")
         self.voice_button.SetToolTip("Choose a voice, grouped by its language.")
         self.voice_button.Bind(wx.EVT_BUTTON, self.on_open)
         self.menu = self._menu(voices)
 
+        rate_label = wx.StaticText(panel, label="&Rate:")
         self.rate = wx.TextCtrl(panel, value=str(rate))
         self.rate.SetName("Rate")
         self.rate.SetToolTip(
@@ -40,9 +44,9 @@ class SpeechDialog(wx.Dialog):
         )
 
         sizer = wx.BoxSizer(wx.VERTICAL)
-        sizer.Add(wx.StaticText(panel, label="&Voice:"), flag=wx.LEFT | wx.TOP, border=10)
+        sizer.Add(voice_label, flag=wx.LEFT | wx.TOP, border=10)
         sizer.Add(self.voice_button, flag=wx.EXPAND | wx.ALL, border=10)
-        sizer.Add(wx.StaticText(panel, label="&Rate:"), flag=wx.LEFT, border=10)
+        sizer.Add(rate_label, flag=wx.LEFT, border=10)
         sizer.Add(self.rate, flag=wx.EXPAND | wx.ALL, border=10)
         panel.SetSizer(sizer)
 
