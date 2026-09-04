@@ -223,8 +223,14 @@ def set_active_preset(name):
 
 
 def context_window():
-    """Global context window, used to size RAG prompts (see RAG Settings)."""
+    """How many tokens the active preset's model holds.
+
+    A preset field, not a global one, because it says what a particular model on
+    a particular server can take. It is never sent: VOLlama uses it to decide
+    when to compact the conversation and to size RAG prompts.
+    """
+    preset = active_preset() or {}
     try:
-        return int(settings.context_window or DEFAULT_CONTEXT_WINDOW)
-    except (TypeError, ValueError, AttributeError):
+        return int(preset.get("context_window") or DEFAULT_CONTEXT_WINDOW)
+    except (TypeError, ValueError):
         return DEFAULT_CONTEXT_WINDOW

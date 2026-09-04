@@ -1,10 +1,10 @@
-version = 51
+version = 67
 import wx
 import threading
 import sounddevice as sd
 import soundfile as sf
 import os
-from Model import Model, assistant_name
+from Model import Model, assistant_name, transcript_lines
 from Settings import settings, config_dir, active_preset
 import codecs
 import json
@@ -15,6 +15,7 @@ from PresetDialog import (
     PresetDialog,
     CONNECTION_PAGE,
 )
+import Tools
 from Utils import displayError
 from llama_index.core.llms import ChatMessage
 import functools
@@ -29,6 +30,22 @@ def playSD(file):
 
 def play(file):
     threading.Thread(target=playSD, args=(file,)).start()
+
+
+def reviewable(message):
+    """Messages alt+up/down can land on: what you or the model actually said.
+
+    Tool results, the empty assistant message that carries a tool call, and
+    reports about background commands are skipped, since there is nothing there
+    to edit or resend.
+    """
+    if message.role == "tool":
+        return False
+    if message.additional_kwargs.get("background"):
+        return False
+    if message.role == "assistant" and not (message.content or "").strip():
+        return False
+    return True
 
 
 class ShiftEnterTextCtrl(wx.TextCtrl):
@@ -101,6 +118,9 @@ class ChatWindow(wx.Frame):
         # self.CreateStatusBar()
         chatMenu = wx.Menu()
         newMenu = chatMenu.Append(wx.ID_NEW)
+        # The window close button does not go through the Exit menu item, and
+        # background commands outlive the app unless something stops them.
+        self.Bind(wx.EVT_CLOSE, self.OnExit)
         self.Bind(wx.EVT_MENU, self.OnNewChat, newMenu)
         openMenu = chatMenu.Append(wx.ID_OPEN)
         self.Bind(wx.EVT_MENU, self.onOpen, openMenu)
@@ -117,6 +137,22 @@ class ChatWindow(wx.Frame):
         )
         self.showReasoning.Check(settings.show_reasoning)
         self.Bind(wx.EVT_MENU, self.onToggleShowReasoning, self.showReasoning)
+        self.tools = chatMenu.Append(
+            wx.ID_ANY,
+            "Tools",
+            "Let the model run Python code on this computer. It runs without "
+            "asking you first.",
+            kind=wx.ITEM_CHECK,
+        )
+        self.tools.Check(settings.tools)
+        self.Bind(wx.EVT_MENU, self.onToggleTools, self.tools)
+        self.workdir = chatMenu.Append(
+            wx.ID_ANY,
+            "CD",
+            "Choose the folder the model's commands run in.",
+        )
+        self.showWorkdir()
+        self.Bind(wx.EVT_MENU, self.onChangeWorkdir, self.workdir)
         self.speakResponse = chatMenu.Append(
             wx.ID_ANY, "Read Response", kind=wx.ITEM_CHECK
         )
@@ -153,6 +189,8 @@ class ChatWindow(wx.Frame):
         self.Bind(wx.EVT_MENU, self.OnHistoryUp, editPreviousMenu)
         editNextMenu = editMenu.Append(wx.ID_ANY, "Edit Next Message\tALT+Down")
         self.Bind(wx.EVT_MENU, self.OnHistoryDown, editNextMenu)
+        compactMenu = editMenu.Append(wx.ID_ANY, "Compact Conversation\tCTRL+SHIFT+K")
+        self.Bind(wx.EVT_MENU, self.onCompact, compactMenu)
 
         ragMenu = wx.Menu()
         indexUrlMenu = ragMenu.Append(wx.ID_ANY, "Index &URL...")
@@ -214,29 +252,58 @@ class ChatWindow(wx.Frame):
         self.status.SetLabel(text)
 
     def clearLast(self, event):
-        if len(self.model.messages) == 0 | (
-            len(self.model.messages) == 1 and self.model.messages[0].role == "system"
-        ):
+        messages = self.model.messages
+        # Drop everything from the last thing you said onward, which is more
+        # than two messages when the model made tool calls in between.
+        last = next(
+            (i for i in reversed(range(len(messages))) if messages[i].role == "user"),
+            None,
+        )
+        if last is None:
             self.prompt.SetValue("")
             return
-        delete = -1 if self.model.messages[-1].role == "user" else -2
-        self.prompt.SetValue(self.model.messages[delete].content)
-        self.model.messages = self.model.messages[:delete]
+        self.prompt.SetValue(messages[last].content)
+        self.model.messages = messages[:last]
+        self.model.reset_context()
         self.historyIndex = len(self.model.messages)
         self.refreshChat()
 
     def refreshChat(self):
         self.response.Clear()
+        if not self.model.messages:
+            return
         start = 1 if self.model.messages[0].role == "system" else 0
         name = assistant_name()
         for message in self.model.messages[start:]:
-            role = name if message.role == "assistant" else "You"
-            text = f"{role}: {message.content}"
-            self.response.AppendText(text)
-            self.response.AppendText(os.linesep)
+            for line in transcript_lines(message, name):
+                self.response.AppendText(line)
+                self.response.AppendText(os.linesep)
 
     def onToggleShowReasoning(self, e):
         settings.show_reasoning = self.showReasoning.IsChecked()
+
+    def onToggleTools(self, e):
+        settings.tools = self.tools.IsChecked()
+
+    def showWorkdir(self):
+        """Put the working directory in the menu item, so it reads as a label.
+
+        An ampersand in a path would otherwise be swallowed as the mnemonic
+        marker and the folder would appear under a different name than it has.
+        """
+        self.workdir.SetItemLabel("CD " + Tools.working_dir().replace("&", "&&"))
+
+    def onChangeWorkdir(self, event):
+        with wx.DirDialog(
+            self,
+            "Choose the folder the model's commands run in",
+            Tools.working_dir(),
+            wx.DD_DEFAULT_STYLE | wx.DD_DIR_MUST_EXIST,
+        ) as dialog:
+            if dialog.ShowModal() != wx.ID_OK:
+                return
+            settings.workdir = dialog.GetPath()
+        self.showWorkdir()
 
     def onTogglePlaySound(self, e):
         settings.sound = self.playSound.IsChecked()
@@ -264,7 +331,10 @@ class ChatWindow(wx.Frame):
 
     def OnNewChat(self, event):
         self.FocusOnPrompt()
+        # Nothing left in the new chat could read their output, so let them go.
+        Tools.kill_all()
         self.model.messages = []
+        self.model.reset_context()
         self.model.setSystem(self.systemPrompt())
         self.response.Clear()
 
@@ -299,7 +369,13 @@ class ChatWindow(wx.Frame):
         self.Bind(wx.EVT_MENU, self.FocusOnPrompt, id=shortcuts["prompt"][2])
 
     def OnHistoryUp(self, event):
+        if not self.model.messages:
+            return
         self.historyIndex -= 1
+        while self.historyIndex > 0 and not reviewable(
+            self.model.messages[self.historyIndex]
+        ):
+            self.historyIndex -= 1
         if self.historyIndex < 0:
             self.historyIndex = 0
         if self.model.messages[self.historyIndex].role == "system":
@@ -312,6 +388,10 @@ class ChatWindow(wx.Frame):
     def OnHistoryDown(self, event):
         self.historyIndex += 1
         length = len(self.model.messages)
+        while self.historyIndex < length and not reviewable(
+            self.model.messages[self.historyIndex]
+        ):
+            self.historyIndex += 1
         if self.historyIndex > length:
             self.historyIndex = length
         if self.historyIndex < length:
@@ -375,10 +455,30 @@ class ChatWindow(wx.Frame):
             with codecs.open(os.path.join(dirname, filename), "r", "utf-8") as f:
                 messages = json.load(f)
                 messages = [
-                    ChatMessage(role=m["role"], content=m["content"]) for m in messages
+                    ChatMessage(
+                        role=m["role"],
+                        content=m["content"],
+                        additional_kwargs=m.get("additional_kwargs") or {},
+                    )
+                    for m in messages
                 ]
                 self.model.messages = messages
+                self.model.reset_context()
                 self.refreshChat()
+
+    def onCompact(self, event):
+        """Summarize the conversation now, instead of waiting for it to fill up."""
+        if self.model.generate or not self.model.messages:
+            return
+
+        def run():
+            try:
+                self.model.init_llm()
+                self.model.compact(self)
+            except Exception as e:
+                displayError(e)
+
+        threading.Thread(target=run).start()
 
     def onUploadImage(self, e):
         with wx.FileDialog(
@@ -474,8 +574,19 @@ class ChatWindow(wx.Frame):
                 return wx.ID_CANCEL
             filename = dlg.GetFilename()
             dirname = dlg.GetDirectory()
+            # Tool calls and their ids live in additional_kwargs; without them a
+            # reloaded chat has tool results the server cannot match up.
             messages = [
-                {"role": m.role, "content": m.content} for m in self.model.messages
+                {
+                    "role": m.role,
+                    "content": m.content,
+                    **(
+                        {"additional_kwargs": m.additional_kwargs}
+                        if m.additional_kwargs
+                        else {}
+                    ),
+                }
+                for m in self.model.messages
             ]
             with codecs.open(os.path.join(dirname, filename), "w", "utf-8") as f:
                 json.dump(messages, f, indent="\t")
@@ -507,6 +618,7 @@ class ChatWindow(wx.Frame):
             dlg.ShowModal()
 
     def OnExit(self, event):
+        Tools.kill_all()
         self.Destroy()
 
     def systemPrompt(self):

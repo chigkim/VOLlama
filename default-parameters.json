@@ -10,7 +10,6 @@
     "speakResponse": false,
     "voice": "default",
     "rate": 0.0,
-    "context_window": 8192,
     "chunk_size": 1024,
     "chunk_overlap": 20,
     "similarity_top_k": 2,
@@ -18,10 +17,13 @@
     "response_mode": "compact",
     "show_context": false,
     "show_reasoning": true,
+    "tools": false,
+    "workdir": "",
     "preset_template": {
         "base_url": "http://localhost:11434/v1/",
         "api_key": "",
         "model": "",
+        "context_window": 8192,
         "system": ""
     },
     "parameters": {

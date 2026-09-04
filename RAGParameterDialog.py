@@ -13,14 +13,6 @@ class RAGParameterDialog(wx.Dialog):
 
         # Define parameters and their tooltips
         self.parameters = {
-            "context_window": {
-                "label": "Context Window",
-                "control": "SpinCtrl",
-                "min": 512,
-                "max": 10000000,
-                "initial": context_window(),
-                "tooltip": "How many tokens the model can hold. Match what your server is running. It is not sent to the server; RAG uses it to decide how many retrieved chunks fit in one prompt.",
-            },
             "chunk_size": {
                 "label": "Chunk Size",
                 "control": "SpinCtrl",

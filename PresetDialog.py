@@ -8,7 +8,22 @@ import requests
 import wx
 
 from Parameters import parse_value, reconcile
-from Settings import config_dir, preset_template
+from Settings import DEFAULT_CONTEXT_WINDOW, config_dir, preset_template
+
+
+# Endpoints people actually point VOLlama at, so a new preset is a pick and a
+# key rather than a URL typed from memory. Not a provider list: every one of
+# these is the same OpenAI-compatible path, and anything not here still works by
+# typing it.
+SERVERS = [
+    ("OpenAI", "https://api.openai.com/v1/"),
+    ("Anthropic", "https://api.anthropic.com/v1/"),
+    ("Google", "https://generativelanguage.googleapis.com/v1beta/openai/"),
+    ("OpenRouter", "https://openrouter.ai/api/v1/"),
+    ("Ollama", "http://localhost:11434/v1/"),
+    ("llama.cpp", "http://localhost:8080/v1/"),
+    ("OMLX", "http://localhost:8000/v1/"),
+]
 
 
 class ConnectionPage(wx.Panel):
@@ -42,6 +57,16 @@ class ConnectionPage(wx.Panel):
             ctrl.SetToolTip(tooltip)
             self.fields[key] = ctrl
             sizer.Add(ctrl, pos=(row, 1), flag=wx.EXPAND | wx.ALL, border=5)
+            if key == "base_url":
+                self.server_button = wx.Button(self, label="&Choose...")
+                # Same label as the model's button, a different accessible name:
+                # two buttons announced as "Choose" would be indistinguishable.
+                self.server_button.SetName("Choose Base URL")
+                self.server_button.SetToolTip(
+                    "Fill in the URL of a server VOLlama already knows about."
+                )
+                self.server_button.Bind(wx.EVT_BUTTON, self.on_server)
+                sizer.Add(self.server_button, pos=(row, 2), flag=wx.ALL, border=5)
             row += 1
 
         sizer.Add(
@@ -63,6 +88,26 @@ class ConnectionPage(wx.Panel):
         sizer.Add(self.choose_button, pos=(row, 2), flag=wx.ALL, border=5)
         row += 1
 
+        sizer.Add(
+            wx.StaticText(self, label="Context &Window:"),
+            pos=(row, 0),
+            flag=wx.ALL | wx.ALIGN_CENTER_VERTICAL,
+            border=5,
+        )
+        self.fields["context_window"] = wx.SpinCtrl(
+            self, min=512, max=10000000, initial=DEFAULT_CONTEXT_WINDOW
+        )
+        self.fields["context_window"].SetName("Context Window")
+        self.fields["context_window"].SetToolTip(
+            "How many tokens this model can hold. Match what your server is "
+            "running. It is not sent to the server: VOLlama uses it to decide "
+            "when to compact the conversation, and to size RAG prompts."
+        )
+        sizer.Add(
+            self.fields["context_window"], pos=(row, 1), flag=wx.EXPAND | wx.ALL, border=5
+        )
+        row += 1
+
         self.status = wx.StaticText(self, label="Status: Ready")
         self.status.SetName("Status")
         sizer.Add(self.status, pos=(row, 0), span=(1, 3), flag=wx.ALL, border=5)
@@ -78,11 +123,33 @@ class ConnectionPage(wx.Panel):
         self.fields["base_url"].SetValue(preset.get("base_url", ""))
         self.fields["api_key"].SetValue(preset.get("api_key", ""))
         self.fields["model"].SetValue(preset.get("model", ""))
+        try:
+            window = int(preset.get("context_window") or DEFAULT_CONTEXT_WINDOW)
+        except (TypeError, ValueError):
+            window = DEFAULT_CONTEXT_WINDOW
+        self.fields["context_window"].SetValue(window)
 
     def save_into(self, preset):
         preset["base_url"] = self.fields["base_url"].GetValue().strip()
         preset["api_key"] = self.fields["api_key"].GetValue().strip()
         preset["model"] = self.fields["model"].GetValue().strip()
+        preset["context_window"] = self.fields["context_window"].GetValue()
+
+    def on_server(self, event):
+        """Pick a known endpoint. Only the URL is filled in, never the key.
+
+        Focus goes back to the URL field rather than staying on the button, since
+        the value it announces is the thing that just changed.
+        """
+        labels = [f"{name} - {url}" for name, url in SERVERS]
+        with wx.SingleChoiceDialog(self, "Choose a server:", "Servers", labels) as dlg:
+            dlg.SetName("Server List")
+            if dlg.ShowModal() != wx.ID_OK:
+                return
+            name, url = SERVERS[dlg.GetSelection()]
+        self.fields["base_url"].SetValue(url)
+        self.setStatus(f"Base URL set to {name}. Enter an API key if it needs one.")
+        self.fields["base_url"].SetFocus()
 
     def on_choose(self, event):
         base_url = self.fields["base_url"].GetValue().strip()
