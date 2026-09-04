@@ -1,71 +1,42 @@
 {
-    "version": 1,
-    "active_preset": "",
-    "presets": {},
-    "embedding_base_url": "http://localhost:11434/v1/",
-    "embedding_api_key": "",
-    "embedding_model": "EmbeddingGemma",
-    "sound": true,
-    "screenreader": false,
-    "speakResponse": false,
-    "voice": "default",
-    "rate": 0.0,
-    "chunk_size": 1024,
-    "chunk_overlap": 20,
-    "similarity_top_k": 2,
-    "similarity_cutoff": 0.0,
-    "response_mode": "compact",
-    "show_context": false,
-    "show_reasoning": true,
-    "tools": false,
-    "workdir": "",
-    "preset_template": {
-        "base_url": "http://localhost:11434/v1/",
-        "api_key": "",
-        "model": "",
-        "context_window": 8192,
-        "system": ""
-    },
-    "parameters": {
-        "max_tokens": {
-            "value": null,
-            "description": "Maximum number of tokens to generate in the response.",
-            "range": "Integer value, empty for the model default"
-        },
-        "temperature": {
-            "value": null,
-            "description": "Increasing the temperature will make the model answer more creatively.",
-            "range": "0.0-2.0"
-        },
-        "top_p": {
-            "value": null,
-            "description": "Nucleus sampling. A higher value will lead to more diverse text, while a lower value will generate more focused and conservative text.",
-            "range": "0.0-1.0"
-        },
-        "presence_penalty": {
-            "value": null,
-            "description": "Penalizes new tokens based on their presence in the text so far.",
-            "range": "-2.0-2.0"
-        },
-        "frequency_penalty": {
-            "value": null,
-            "description": "Penalizes new tokens based on their frequency in the text so far.",
-            "range": "-2.0-2.0"
-        },
-        "stop": {
-            "value": [],
-            "description": "When this pattern is encountered the LLM will stop generating text and return.",
-            "range": "Array of strings"
-        },
-        "seed": {
-            "value": null,
-            "description": "Sets the random number seed to use for generation. Setting this to a specific number will make the model generate the same text for the same prompt.",
-            "range": "Integer value"
-        },
-        "reasoning_effort": {
-            "value": null,
-            "description": "Sets the reasoning effort.",
-            "range": "none, low, medium, high"
-        }
-    }
+	"max_tokens": {
+		"value": null,
+		"description": "Maximum number of tokens to generate in the response.",
+		"range": "Integer value, empty for the model default"
+	},
+	"temperature": {
+		"value": null,
+		"description": "Increasing the temperature will make the model answer more creatively.",
+		"range": "0.0-2.0"
+	},
+	"top_p": {
+		"value": null,
+		"description": "Nucleus sampling. A higher value will lead to more diverse text, while a lower value will generate more focused and conservative text.",
+		"range": "0.0-1.0"
+	},
+	"presence_penalty": {
+		"value": null,
+		"description": "Penalizes new tokens based on their presence in the text so far.",
+		"range": "-2.0-2.0"
+	},
+	"frequency_penalty": {
+		"value": null,
+		"description": "Penalizes new tokens based on their frequency in the text so far.",
+		"range": "-2.0-2.0"
+	},
+	"stop": {
+		"value": [],
+		"description": "When this pattern is encountered the LLM will stop generating text and return.",
+		"range": "Array of strings"
+	},
+	"seed": {
+		"value": null,
+		"description": "Sets the random number seed to use for generation. Setting this to a specific number will make the model generate the same text for the same prompt.",
+		"range": "Integer value"
+	},
+	"reasoning_effort": {
+		"value": null,
+		"description": "Sets the reasoning effort.",
+		"range": "none, low, medium, high"
+	}
 }

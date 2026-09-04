@@ -1,0 +1,4 @@
+# Everything in requirements.txt, plus what the tests need. The tests import no
+# wxPython and reach no network, so they run anywhere the package imports.
+-r requirements.txt
+pytest

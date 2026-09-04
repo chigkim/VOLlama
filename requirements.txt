@@ -11,15 +11,13 @@ llama-index-core
 llama-index-embeddings-openai-like
 llama-index-llms-openai
 llama-index-llms-openai-like
-#llama-index-multi-modal-llms-openai
-#llama-index-multi-modal-llms-ollama
-#llama-index-multi-modal-llms-gemini
 llama-index-readers-file
 llama-index-readers-web
 docx2txt
 cryptography
+requests
+tiktoken
 MainContentExtractor
 EbookLib
 html2text
-pandas
 transformers

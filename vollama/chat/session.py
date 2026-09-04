@@ -1,0 +1,438 @@
+"""One chat, and the loop that answers a message in it.
+
+`ChatSession.ask` is the single path a message takes, whatever started it. It
+sends the conversation, streams the reply, runs whatever tools the model asked
+for, sends their results back, and does that until the model stops asking or
+one of the budgets runs out. Around it sit the three things that keep a long
+chat working: compaction when the window fills, a retry when the server refuses
+the history as too long, and a retry when a reply comes back cut short.
+
+It reports through a `ChatView` and knows nothing about how any of it is shown.
+Errors are raised, not displayed: the caller has the context to decide whether
+this is a dialog, a status line or a test failure.
+"""
+
+import itertools
+import logging
+import time
+
+from llama_index.core.base.llms.types import ImageBlock, VideoBlock
+from llama_index.core.llms import ChatMessage
+
+from vollama.chat import client, compaction, streaming
+from vollama.chat.conversation import BACKGROUND, Conversation
+from vollama.chat.view import NullView, TurnStats
+from vollama.config import presets
+from vollama.config.settings import settings
+from vollama.errors import DocumentError
+from vollama.rag import documents
+from vollama.rag.index import RagIndex, describe_sources
+from vollama.tools import registry
+from vollama.tools.shell import cancellation, jobs
+
+log = logging.getLogger(__name__)
+
+# What a message must start with to be answered from the index instead of by
+# the model alone.
+RETRIEVAL_PREFIX = "/q "
+
+# How an attached document is joined to the message it came with.
+DOCUMENT_SEPARATOR = "\n---\n"
+
+
+class Attachments:
+    """What was attached to a message before it was sent.
+
+    Immutable and passed in, rather than fields on the session poked by the UI
+    beforehand: a turn should be able to say what it was given by looking at its
+    own arguments.
+    """
+
+    __slots__ = ("images", "files", "url")
+
+    def __init__(self, images=(), files=(), url=""):
+        self.images = tuple(images)
+        self.files = tuple(files)
+        self.url = url or ""
+
+    def __bool__(self):
+        return bool(self.images or self.files or self.url)
+
+
+NOTHING = Attachments()
+
+
+class ChatSession:
+    """One conversation, and the ability to add to it."""
+
+    def __init__(self, system=""):
+        self.conversation = Conversation(system)
+        self.index = None
+        self.generating = False
+        self.usage = None
+        # Why the server stopped the last reply, which is what tells a cut-off
+        # answer from a finished one.
+        self.finish_reason = ""
+        self.counter = client.token_counter()
+
+    # -------------------------------------------------------------- the turn
+
+    def ask(self, prompt, view=None, attachments=NOTHING):
+        """Answer one message. Raises if the request cannot be made at all."""
+        view = view or NullView()
+        preset = presets.require_active()
+        self.counter.reset_counts()
+        # The token counter chokes on the blocks a multimodal message carries,
+        # and a server that reports usage makes it unnecessary anyway.
+        llm = client.build(
+            preset,
+            tools=registry.TOOLS if client.tools_enabled() else None,
+            counter=None if attachments.images else self.counter,
+        )
+
+        mark = len(self.conversation.messages)
+        try:
+            # So a command in its first seconds, before it goes to the
+            # background, is cut short by the same Escape that stops the reply.
+            # Only for the length of the turn: between turns nothing is being
+            # waited on, and a stale stop flag would answer for the next
+            # command anybody starts.
+            with cancellation.watching(lambda: not self.generating):
+                self._run_turn(prompt, attachments, llm, preset, view)
+        except Exception:
+            # The turn did not happen, so it should not be in the history: a
+            # half-added turn is one the next request cannot send.
+            del self.conversation.messages[mark:]
+            raise
+        finally:
+            self.generating = False
+            view.finished()
+
+    def _run_turn(self, prompt, attachments, llm, preset, view):
+        """One turn, from what the user typed to the model having nothing left."""
+        self._report_background(view)
+        message, retrieval = self._compose(prompt, attachments, view)
+        self.conversation.add(message)
+        self.generating = True
+        if retrieval:
+            self._answer_from_index(message.content, llm, view)
+        else:
+            view.status("Processing...")
+            self._converse(llm, preset, view)
+        if self.generating:
+            self._compact_if_full(preset, view)
+
+    def stop(self):
+        """Give up on the reply. Background commands keep running."""
+        self.generating = False
+
+    def restart(self, system=""):
+        """Begin a new chat.
+
+        The index is deliberately kept: New Chat is about the conversation, and
+        rebuilding an index over a book because you wanted a fresh question is
+        not what anybody means by it.
+        """
+        self.conversation = Conversation(system)
+        self.usage = None
+        self.finish_reason = ""
+
+    def _converse(self, llm, preset, view):
+        """Stream replies and run tools until the model has nothing more to ask."""
+        response = self._send(llm, preset, view)
+        rounds = 0
+        calls = 0
+        retried = False
+        while True:
+            text, tool_calls = self._stream(response, view)
+            self.conversation.add_assistant(text, tool_calls)
+            if not tool_calls:
+                if self.generating and not retried and self._recover(preset, view):
+                    retried = True
+                    response = self._send(llm, preset, view)
+                    continue
+                return
+            # A dangling tool call the server never sees an answer for makes the
+            # whole history unusable, so every call gets a tool message even when
+            # we are not going to run it.
+            allowed = (
+                self.generating
+                and rounds < registry.MAX_TOOL_ROUNDS
+                and calls < registry.MAX_TOOL_CALLS
+            )
+            calls += len(tool_calls)
+            for call in tool_calls:
+                self._run_tool(call, view, allowed)
+            if not allowed:
+                return
+            # Polls and reads only look at work already there, so they do not
+            # spend the budget: waiting for a build would otherwise use it all.
+            if any(not registry.is_free(_name(call)) for call in tool_calls):
+                rounds += 1
+            view.status("Processing...")
+            response = self._send(llm, preset, view)
+
+    def _run_tool(self, call, view, allowed):
+        """Run one tool call, report it, and record its result as a message."""
+        name = _name(call)
+        arguments = call["function"]["arguments"]
+        view.tool_called(registry.describe(name, arguments))
+        if allowed:
+            view.status(f"Running {name}...")
+            result = registry.call(name, arguments)
+        elif self.generating:
+            result = "Not run: the limit on tool calls in one message was reached."
+        else:
+            result = "Not run: the user stopped generation."
+        view.tool_result(result)
+        self.conversation.add_tool_result(call["id"], name, result)
+
+    def _stream(self, response, view):
+        """Consume one streamed reply. Returns its text and its tool calls."""
+        view.reply_started()
+        started = time.monotonic()
+        first = 0.0
+        answer = []
+        extras = {}
+        last = None
+        usage = None
+        self.finish_reason = ""
+        for chunk in response:
+            if not first:
+                first = time.monotonic()
+                view.status("Typing...")
+            last = chunk
+            streaming.collect_extras(chunk, extras)
+            usage = streaming.usage_of(chunk) or usage
+            text, reasoning = streaming.text_of(chunk)
+            if reasoning:
+                view.reasoning_text(reasoning)
+            if text:
+                answer.append(text)
+                view.reply_text(text)
+            self.finish_reason = streaming.finish_reason(chunk) or self.finish_reason
+            if not self.generating:
+                break
+        view.reply_finished()
+        self._record_usage(usage, started, first or time.monotonic(), view)
+        return "".join(answer), streaming.tool_calls_of(last, extras)
+
+    def _record_usage(self, usage, started, first, view):
+        """Note what the exchange cost, from the server or from our own count."""
+        if usage is None and self.counter.total_llm_token_count:
+            # Not every server honours stream_options, so a local tokenizer
+            # stands in. It is an estimate, and it is what compaction reads.
+            usage = (
+                self.counter.prompt_llm_token_count,
+                self.counter.completion_llm_token_count,
+            )
+        if usage is None:
+            self.usage = None
+            view.status("Finished")
+            return
+        self.usage = TurnStats(
+            prompt_tokens=usage[0],
+            completion_tokens=usage[1],
+            total_seconds=time.monotonic() - started,
+            first_token_seconds=first - started,
+        )
+        view.stats(self.usage)
+
+    # ------------------------------------------------------------- the request
+
+    def _send(self, llm, preset, view):
+        """Make the request, compacting and trying once more if it will not fit."""
+        try:
+            return _start(llm, self.conversation.outgoing(_environment()))
+        except Exception as refusal:
+            if not compaction.overflowed(refusal):
+                raise
+            # The server has just said the conversation no longer fits, so there
+            # is nothing left to lose by summarizing it and asking again.
+            upto = self.conversation.halfway()
+            if upto is None:
+                raise
+            view.status("Too long for the model, compacting...")
+            try:
+                compacted = self.compact(preset, view, upto)
+            except Exception:
+                # A deliberate boundary: whatever went wrong trying to work
+                # around the refusal, what the user needs to see is the refusal.
+                log.exception("Compaction after an overflow failed")
+                raise refusal from None
+            if not compacted:
+                raise
+            return _start(llm, self.conversation.outgoing(_environment()))
+
+    def _recover(self, preset, view):
+        """Compact and retry when a reply came back cut short. Once per turn.
+
+        The truncated reply is dropped from the history the retry goes out with,
+        since asking again with half an answer already in place invites the model
+        to carry on from it rather than start over. It stays in the transcript,
+        because the user has already read it and text that vanishes is worse than
+        text that is explained.
+        """
+        if not compaction.truncated(
+            self.finish_reason,
+            self.usage.completion_tokens if self.usage else 0,
+            client.max_output(preset),
+            self.usage.prompt_tokens if self.usage else 0,
+            preset.context_window,
+        ):
+            return False
+        upto = self.conversation.halfway()
+        if upto is None:
+            return False
+        view.notice(
+            "Cut short: that reply ended early, which usually means the "
+            "conversation is too long for the model. Compacting and asking again."
+        )
+        try:
+            compacted = self.compact(preset, view, upto)
+        except Exception as e:
+            view.status(f"Could not compact: {e}")
+            return False
+        if not compacted:
+            return False
+        self.conversation.drop_last()
+        return True
+
+    # -------------------------------------------------------------- compaction
+
+    def compact(self, preset=None, view=None, upto=None):
+        """Replace the conversation up to `upto` with a summary of it.
+
+        Returns whether the summary was made. The client is built without tools:
+        a model left holding them goes and runs something instead of writing
+        prose, and the turn ends with no summary.
+        """
+        view = view or NullView()
+        preset = preset or presets.require_active()
+        upto = len(self.conversation.messages) if upto is None else upto
+        view.status("Compacting conversation...")
+        summary = compaction.summarize(
+            client.build(preset), self.conversation.outgoing(upto=upto)
+        )
+        if not summary:
+            return False
+        self.conversation.compacted(summary, upto)
+        self.usage = None
+        view.notice(
+            "Compacted: the conversation so far was replaced with a summary of "
+            f"it, {len(summary)} characters long."
+        )
+        view.status("Compacted")
+        return True
+
+    def _compact_if_full(self, preset, view):
+        """Compact when the exchange that just finished nearly filled the window."""
+        used = self.usage.total_tokens if self.usage else 0
+        if not compaction.needed(used, preset.context_window):
+            return
+        if not self.conversation.compactable():
+            return
+        try:
+            self.compact(preset, view)
+        except Exception as e:
+            # A failed summary is not a failed answer: the user already has one.
+            log.exception("Compaction failed")
+            view.status(f"Could not compact: {e}")
+
+    # ------------------------------------------------------------ the message
+
+    def _compose(self, prompt, attachments, view):
+        """The user message to send, and whether it should go to the index.
+
+        Attachments are resolved here, where a failure can still stop the turn
+        before anything is added to the conversation.
+        """
+        retrieval = prompt.startswith(RETRIEVAL_PREFIX)
+        if retrieval:
+            prompt = prompt[len(RETRIEVAL_PREFIX) :]
+        images = list(attachments.images)
+        text = prompt
+        if attachments.url:
+            if documents.is_image_url(attachments.url):
+                images.append(attachments.url)
+            else:
+                view.status("Fetching the page...")
+                text += DOCUMENT_SEPARATOR + documents.fetch_page(attachments.url)
+        if attachments.files:
+            view.status("Reading the documents...")
+            text += DOCUMENT_SEPARATOR + documents.read_files(attachments.files)
+        message = ChatMessage(role="user", content=text)
+        for image in images:
+            message.blocks.append(_block(image))
+        return message, retrieval
+
+    def _report_background(self, view):
+        """Pass on what background commands did while nobody was looking.
+
+        A job that outlives its turn has no way to announce itself, since there
+        is no path to inject a message into a finished turn, so it rides along
+        with the next one as a message from the user.
+        """
+        note = jobs.notes()
+        if not note:
+            return
+        self.conversation.add_user(note, marker=BACKGROUND)
+        view.notice(note)
+
+    # --------------------------------------------------------------- retrieval
+
+    def load_index(self, folder):
+        self.index = RagIndex()
+        self.index.load(folder)
+
+    def build_index(self, source, progress):
+        """Index a folder, files or a URL, replacing whatever was indexed before."""
+        self.index = RagIndex()
+        return self.index.build(source, progress)
+
+    def save_index(self, folder):
+        if not self.index:
+            raise DocumentError("Nothing has been indexed yet.")
+        self.index.save(folder)
+
+    def _answer_from_index(self, question, llm, view):
+        """Answer from the index instead of from the conversation alone."""
+        if not self.index or not self.index.ready():
+            raise RuntimeError("No index found. Index something first.")
+        view.status("Processing with RAG...")
+        response = self.index.query(question, llm)
+        text, _ = self._stream(response, view)
+        self.conversation.add_assistant(text)
+        if settings.show_context:
+            view.notice(describe_sources(self.index.sources()))
+
+
+def _name(call):
+    return call["function"]["name"]
+
+
+def _environment():
+    """What to tell the model about this machine, when it can act on it."""
+    return registry.environment() if client.tools_enabled() else None
+
+
+def _block(image):
+    """One attachment, as the block its file type calls for."""
+    if documents.is_video(image):
+        return VideoBlock(path=image)
+    return ImageBlock(image=documents.encode_image(image))
+
+
+def _start(llm, messages):
+    """Send the request and pull the first chunk.
+
+    The library only talks to the server when the stream is first read, so
+    without this a request that is refused fails somewhere in the middle of
+    showing a reply, which is too late to compact and try again.
+    """
+    response = llm.stream_chat(messages)
+    try:
+        first = next(response)
+    except StopIteration:
+        return iter(())
+    return itertools.chain([first], response)
