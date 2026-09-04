@@ -9,7 +9,6 @@ PyWin32; sys_platform == 'win32'
 PyObjC; sys_platform == 'darwin'
 llama-index-core
 llama-index-embeddings-openai-like
-llama-index-llms-openai
 llama-index-llms-openai-like
 llama-index-readers-file
 llama-index-readers-web

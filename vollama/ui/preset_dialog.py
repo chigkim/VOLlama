@@ -203,7 +203,7 @@ class ConnectionPage(wx.Panel):
 class ParametersPage(wx.Panel):
     """Generation parameters, built from the schema rather than hand-written.
 
-    A control per entry in default-parameters.json, so a parameter added to the
+    A control per entry in the parameter schema, so a parameter added to the
     schema appears here with its description and range and nothing else changes.
     """
 

@@ -15,6 +15,7 @@ import win32com.client.dynamic
 import win32com.client.gencache
 
 from vollama.config.settings import settings
+from vollama.speech import described
 
 log = logging.getLogger(__name__)
 
@@ -36,8 +37,13 @@ class SapiSpeech:
         self.synth.Speak("", 3)
 
     def voices(self):
+        """Every installed voice, split into a name and a language.
+
+        `described()` does the splitting and keeps the whole description as the
+        identifier, so `voice` below still matches on `GetDescription()`.
+        """
         return self._repaired(
-            lambda: [voice.GetDescription() for voice in self.synth.GetVoices()]
+            lambda: [described(voice.GetDescription()) for voice in self.synth.GetVoices()]
         )
 
     @property

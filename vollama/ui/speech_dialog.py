@@ -4,14 +4,12 @@ The dialog asks; it does not apply. The window takes the answer and sets it on
 the speech backend, so the backends stay free of wxPython — each of them used to
 carry its own near-identical copy of this.
 
-The voices go into a nested menu rather than a list, because macOS offers well
-over a hundred and their identifiers already say how they group:
-`com.apple.ttsbundle.siri_*`, `com.apple.voice.premium.*` and
-`com.apple.speech.synthesis.voice.*` are three different sets of voices and you
-almost always know which one you want. A submenu per level is also the shape a
-screen reader announces best: it says how many items are in the level you are
-in, which a flat list of a hundred cannot. `speech.group()` works out the levels;
-this module only turns them into menus.
+The voices go into a submenu per language rather than a flat list, because
+macOS offers well over a hundred and language is the thing you actually know
+about the voice you want. A submenu is also the shape a screen reader announces
+best: it says how many items are in the level you are in, which a flat list of
+a hundred cannot. `speech.group()` works out the levels; this module only turns
+them into menus.
 """
 
 import wx
@@ -24,14 +22,15 @@ class SpeechDialog(wx.Dialog):
 
     def __init__(self, parent, voices, voice, rate):
         super().__init__(parent, title="Select Voice and Rate", size=(460, 240))
-        self.selected = voice if voice in voices else ""
+        self.voices = {each.identifier: each for each in voices}
+        self.selected = voice if voice in self.voices else ""
 
         panel = wx.Panel(self)
         self.voice_button = wx.Button(panel, label=self._label())
         self.voice_button.SetName("Voice")
-        self.voice_button.SetToolTip("Choose a voice, grouped by its family.")
+        self.voice_button.SetToolTip("Choose a voice, grouped by its language.")
         self.voice_button.Bind(wx.EVT_BUTTON, self.on_open)
-        self.menu = self._menu(group(voices))
+        self.menu = self._menu(voices)
 
         self.rate = wx.TextCtrl(panel, value=str(rate))
         self.rate.SetName("Rate")
@@ -59,7 +58,7 @@ class SpeechDialog(wx.Dialog):
         self.voice_button.SetFocus()
 
     def choice(self):
-        """The chosen voice and rate. The rate is None if it was not a number."""
+        """The chosen voice identifier and rate. The rate is None if not a number."""
         try:
             rate = float(self.rate.GetValue().strip())
         except ValueError:
@@ -68,37 +67,45 @@ class SpeechDialog(wx.Dialog):
 
     # ------------------------------------------------------------------ menu
 
-    def _menu(self, node):
-        """One wx.Menu for a level of the namespace, submenus for the levels below.
+    def _menu(self, voices):
+        """A submenu per language, and the languageless voices at the top level.
 
-        A name that is both a voice and a group gets an item of its own first,
-        so a voice is never unreachable because something is nested under it.
+        The top-level voices come first, since on Windows before a description
+        splits — and on any backend that gives us no language — they are the
+        whole menu, and a menu that opens on a submenu is harder to hear.
         """
+        languages = group(voices)
         menu = wx.Menu()
-        if node.voice:
-            self._leaf(menu, "This one", node.voice)
-        for name in sorted(node.groups):
-            child = node.groups[name]
-            if child.groups:
-                menu.AppendSubMenu(self._menu(child), name)
-            else:
-                self._leaf(menu, name, child.voice)
+        for voice in languages.get("", ()):
+            self._leaf(menu, voice.name, voice)
+        for language in sorted(name for name in languages if name):
+            submenu = wx.Menu()
+            for voice in languages[language]:
+                self._leaf(submenu, voice.within(language), voice)
+            menu.AppendSubMenu(submenu, language)
         return menu
 
     def _leaf(self, menu, label, voice):
         item = menu.Append(wx.ID_ANY, label)
-        self.Bind(wx.EVT_MENU, lambda event, chosen=voice: self.on_chosen(chosen), item)
+        self.Bind(
+            wx.EVT_MENU,
+            lambda event, chosen=voice.identifier: self.on_chosen(chosen),
+            item,
+        )
 
     def _label(self):
-        return self.selected or "Choose Voice..."
+        """The button's label: the voice with its language, or the prompt."""
+        if not self.selected:
+            return "Choose Voice..."
+        return self.voices[self.selected].describe()
 
     def on_open(self, event):
         self.PopupMenu(self.menu, self.voice_button.Position)
 
-    def on_chosen(self, voice):
-        self.selected = voice
+    def on_chosen(self, identifier):
+        self.selected = identifier
         # The button is the only place the choice is shown, so it has to say the
-        # whole identifier and take focus back for a screen reader to read it.
+        # whole thing and take focus back for a screen reader to read it.
         self.voice_button.SetLabel(self._label())
         self.Layout()
         self.voice_button.SetFocus()

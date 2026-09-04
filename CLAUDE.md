@@ -55,7 +55,6 @@ The package is laid out as its layers, and imports only ever point downward.
 
 ```
 VOLlama.py                    entry point: logging, wx.App, ChatWindow, MainLoop
-default-parameters.json       the generation-parameter schema, and nothing else
 vollama/
   errors.py                   VOLlamaError, ConfigError, DocumentError
   resources.py                paths to bundled files, frozen or from source
@@ -114,7 +113,7 @@ Nothing else is abstracted: one provider path, no repositories or services, no s
 
 `config/presets.py` owns the rules as well as the shape: `create` refuses a taken name, `update` renames, `delete` promotes the first of what is left, `active_name()` corrects a stale pointer. The GUI calls these rather than deciding again. `Preset` has **no default base URL** — an empty preset must fail `validate()`; the suggested starting URL belongs to the editor.
 
-`config/parameters.py` reads `default-parameters.json` once at import. `None` means *not sent*, which is why `Model.Client` exists (below). The preset editor builds its controls from the schema, so adding a parameter is an edit to the JSON.
+`config/parameters.py` holds the parameter schema as a dict, `SCHEMA`. `None` means *not sent*, which is why `Model.Client` exists (below). The preset editor builds its controls from the schema, so adding a parameter is an edit to that table.
 
 `config/prompts.py` is the system-prompt library over `prompts.csv`, using stdlib `csv`. pandas is no longer a dependency.
 
@@ -248,7 +247,9 @@ It does kill a job still inside its yield window. `shell.cancellation` is a `Can
 - Keyboard-only navigation throughout, with shortcuts declared once on the menu item; toolbar buttons raise that same item's event.
 - Audio feedback (`send.wav` / `receive.wav`) for state changes.
 - Platform-native TTS, plus a screen-reader output that speaks in the user's own voice and rate. The backends expose `speak`, `stop`, `voices()`, `voice`, `rate` and **open no dialogs**; `ui/speech_dialog.py` asks and the window applies.
-- Voices go into a nested menu, not a list: macOS offers well over a hundred and their identifiers already group them (`com.apple.ttsbundle.siri_*`, `com.apple.voice.premium.*`, `com.apple.speech.synthesis.voice.*`). `speech.group()` works out the levels — folding a level that adds nothing but a name into its child, keeping both names, and dropping the prefix every voice shares — and the dialog only turns them into menus. A screen reader announces how many items are in the level you are in, which a flat list of a hundred cannot.
+- Voices go into a submenu per **language**, not a list and not a tree of identifiers: macOS offers well over a hundred. `speech.voices()` returns `Voice` records (identifier, name, language) rather than identifier strings, because a macOS identifier is neither the voice's name nor searchable — the one Siri voice the system lends to third-party apps is `com.apple.ttsbundle.gryphon-neuralAX_Nora_en-US_premium` and is called "Voice 4". Grouping by identifier namespace sorted voices by *engine* (`eloquence`, `voice.compact`, `speech.synthesis.voice`), so nine Korean voices landed in three places, two of them levels deep behind words naming an implementation detail. `speech.group()` buckets by language and the dialog only turns that into menus; `Voice.within()` drops a name's redundant locale suffix ("Eddy (Korean (South Korea))"), and `Voice.describe()` writes the button's label. A screen reader announces how many items are in the level you are in, which a flat list of a hundred cannot.
+- Only the `neuralAX` build of a Siri voice is published to `NSSpeechSynthesizer`, so a Korean Siri voice installed as `ko_KR.minji.gryphon.premium` is offered by no public API — not `availableVoices()`, not `AVSpeechSynthesisVoice`, not `say -v '?'`. Nothing to fix here; don't add a fallback for it.
+- `voice` and `rate` stay plain values on the backends. `settings.voice` holds the platform identifier, which is why `described()` keeps a whole SAPI description as the identifier while splitting a name and language out of it for display.
 
 New UI components must keep to all of this.
 

@@ -5,14 +5,16 @@ has finished, so a queue and a delegate are what turn "speak this sentence"
 into something that can be called while a reply is still streaming.
 """
 
+import functools
 import queue
 import weakref
 
 import AppKit
 import objc
-from Foundation import NSObject
+from Foundation import NSLocale, NSObject
 
 from vollama.config.settings import settings
+from vollama.speech import Voice
 
 
 class _Delegate(NSObject):
@@ -60,7 +62,23 @@ class MacSpeech:
         self.synth.stopSpeaking()
 
     def voices(self):
-        return sorted(AppKit.NSSpeechSynthesizer.availableVoices())
+        """Every installed voice, as a record naming it and its language.
+
+        Sorted by language and then name, which is the order the menu shows
+        them in; `group()` keeps whatever order it is handed.
+
+        This is every voice the system will lend out, and on a machine with
+        Siri voices installed it is fewer than the ones you can hear Siri use.
+        Only the `neuralAX` build of a Siri voice is published to
+        NSSpeechSynthesizer, so `en_US.nora.neuralAX.premium` shows up as
+        "Voice 4" while `ko_KR.minji.gryphon.premium`, sitting in the same
+        asset folder, is not offered here, by AVSpeechSynthesisVoice, or by
+        `say -v '?'`. There is nothing to fix on our side of that.
+        """
+        return sorted(
+            (_voice(identifier) for identifier in AppKit.NSSpeechSynthesizer.availableVoices()),
+            key=lambda voice: (voice.language, voice.name),
+        )
 
     @property
     def voice(self):
@@ -68,7 +86,7 @@ class MacSpeech:
 
     @voice.setter
     def voice(self, identifier):
-        if identifier not in set(self.voices()):
+        if identifier not in set(AppKit.NSSpeechSynthesizer.availableVoices()):
             return
         if self.synth.setVoice_(identifier):
             settings.voice = identifier
@@ -83,3 +101,27 @@ class MacSpeech:
         self.synth.setRate_(float(rate))
         settings.rate = float(rate)
         settings.save()
+
+
+def _voice(identifier):
+    """One `Voice` from a macOS voice identifier.
+
+    A voice with no attributes at all is named by its identifier rather than
+    dropped: it is still speakable, and an unnamed entry in the menu is a
+    better failure than a voice that has silently gone missing.
+    """
+    attributes = AppKit.NSSpeechSynthesizer.attributesForVoice_(identifier) or {}
+    name = str(attributes.get("VoiceName") or identifier)
+    return Voice(identifier, name, _language(str(attributes.get("VoiceLocaleIdentifier") or "")))
+
+
+@functools.lru_cache(maxsize=None)
+def _language(locale):
+    """`ko_KR` as "Korean (South Korea)", in the user's own language.
+
+    Cached because there are far more voices than locales, and every macOS
+    release adds voices faster than languages.
+    """
+    if not locale:
+        return ""
+    return str(NSLocale.currentLocale().localizedStringForLocaleIdentifier_(locale) or locale)
