@@ -10,12 +10,10 @@ fourth time as a file-dialog filter.
 import logging
 
 import requests
+import trafilatura
+from bs4 import BeautifulSoup
 from llama_index.core import SimpleDirectoryReader
-from llama_index.readers.web import (
-    BeautifulSoupWebReader,
-    MainContentExtractorReader,
-    TrafilaturaWebReader,
-)
+from main_content_extractor import MainContentExtractor
 
 from vollama.errors import DocumentError
 
@@ -41,17 +39,59 @@ DOCUMENT_EXTENSIONS = (
 
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp")
 
-# Readers in the order they are tried. The first extracts an article cleanly
-# when the page is an article; the second copes with more layouts; the third
-# will take anything with tags in it. A page that beats all three is a page we
-# cannot read, and saying so is better than attaching an empty document.
-PAGE_READERS = (
-    MainContentExtractorReader,
-    TrafilaturaWebReader,
-    BeautifulSoupWebReader,
-)
-
 TIMEOUT = 30
+
+# Sent because a bare python-requests User-Agent is refused outright by a fair
+# number of sites, and each of the three readers this replaced sent one.
+HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; VOLlama)"}
+
+
+def _article(html):
+    """The article, as markdown, when the page is an article."""
+    return MainContentExtractor.extract(
+        html, output_format="markdown", include_links=False
+    )
+
+
+def _content(html):
+    """The main content, for a page laid out too oddly for the first."""
+    return trafilatura.extract(html)
+
+
+def _text(html):
+    """Every word in the document, for a page that beat both of the others."""
+    return BeautifulSoup(html, "html.parser").get_text()
+
+
+# Extractors in the order they are tried. The first pulls an article out
+# cleanly when the page is an article; the second copes with more layouts; the
+# third will take anything with tags in it. A page that beats all three is a
+# page we cannot read, and saying so is better than attaching an empty
+# document.
+#
+# These were llama_index's three web readers, which are these three calls each
+# wrapped in a class. Reaching them meant importing `llama_index.readers.web`,
+# whose __init__ imports all twenty-five of its readers eagerly, so a client
+# that reads three kinds of web page depended on playwright and selenium.
+PAGE_READERS = (_article, _content, _text)
+
+
+def _download(url):
+    """The HTML of a page, decoded the way the page itself says.
+
+    One request that all three extractors read, where each reader used to make
+    its own. `requests` falls back to ISO-8859-1 for a text response that does
+    not declare a charset, which mangles every page not written in Latin-1, so
+    the bytes are asked whenever the header does not say.
+    """
+    try:
+        response = requests.get(url, timeout=TIMEOUT, headers=HEADERS)
+        response.raise_for_status()
+    except requests.RequestException as e:
+        raise DocumentError(f"Could not read {url}: {e}") from e
+    if "charset" not in response.headers.get("Content-Type", "").lower():
+        response.encoding = response.apparent_encoding
+    return response.text
 
 
 def load(source):
@@ -84,20 +124,21 @@ def read_files(paths):
 def fetch_page(url):
     """The readable text of a web page.
 
-    Each reader is tried in turn and its failure logged, rather than swallowed:
-    when a page comes back empty it matters which of the three managed to fetch
-    it and returned nothing.
+    Each extractor is tried over the same HTML and its failure logged, rather
+    than swallowed: when a page comes back empty it matters which of the three
+    read it and found nothing in it.
     """
+    html = _download(url)
     for reader in PAGE_READERS:
         try:
-            documents = reader().load_data([url])
+            text = reader(html)
         except Exception as e:
-            # Third-party readers raise whatever their parser raises, and the
-            # answer to any of it is the same: try the next one.
+            # Each parser raises whatever it raises, and the answer to any of
+            # it is the same: try the next one.
             log.info("%s could not read %s: %s", reader.__name__, url, e)
             continue
-        if documents and documents[0].text.strip():
-            return documents[0].text.strip()
+        if text and text.strip():
+            return text.strip()
         log.info("%s found no text at %s", reader.__name__, url)
     raise DocumentError(f"No readable text was found at {url}.")
 

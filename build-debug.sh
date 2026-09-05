@@ -3,7 +3,6 @@ set -e
 rm -rf __pycache__
 rm -rf build
 rm -rf dist
-uv pip uninstall playwright selenium
 
 # See build.sh: the path is asked for rather than written down, so the two
 # scripts cannot drift onto different Python versions again.

@@ -3,7 +3,6 @@ set -e
 rm -rf __pycache__
 rm -rf build
 rm -rf dist
-uv pip uninstall playwright selenium
 
 # Ask the interpreter where the package actually is, rather than naming the
 # Python version in the path. A venv's site-packages sits under lib/python3.X,

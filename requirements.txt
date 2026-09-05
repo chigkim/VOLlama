@@ -10,13 +10,14 @@ PyObjC; sys_platform == 'darwin'
 llama-index-core
 llama-index-embeddings-openai-like
 llama-index-readers-file
-llama-index-readers-web
 docx2txt
 cryptography
 openai
 requests
 tiktoken
 MainContentExtractor
+beautifulsoup4
+trafilatura
 EbookLib
 html2text
 transformers
