@@ -287,25 +287,71 @@ To restart Ollama, use the command below:
 ```
 docker start ollama
 ```
+## Run from Source
+
+VOLlama uses [uv](https://docs.astral.sh/uv/), which is the only thing you need
+installed. It fetches the right Python and every dependency itself.
+
+```bash
+git clone https://github.com/chigkim/VOLlama
+cd VOLlama
+uv run vollama
+```
+
+The first run creates the environment and takes a minute; after that it starts
+straight away. There is no separate install step and nothing to activate --
+`uv run` brings the environment up to date each time, so a `git pull` that
+changes a dependency is picked up on the next launch.
+
 ## Build from Source
+
+Building runs PyInstaller inside the environment, so this is the one place the
+environment is created up front and activated:
 
 ### Windows
 
 ```bash
-python -m venv .venv
+uv sync
 .venv\Scripts\activate
-pip install -r requirements.txt
-build-pyinstaller
 build
 ```
 
 ### Mac
 
-Make sure to use Python 3.12.
-
 ```bash
-python -m venv .venv
+uv sync
 source .venv/bin/activate
-pip install -r requirements.txt
 ./build.sh
 ```
+
+`uv sync` installs everything the build needs, PyInstaller included. The app is
+left in `dist`.
+
+### Building your own bootloader
+
+The bootloader is the small executable PyInstaller puts at the front of a
+packaged app to start it. The copy on PyPI ships a prebuilt one, which is what
+the build above uses and what almost everyone should use.
+
+Compiling your own is worth it in two cases:
+
+* **Antivirus flags the app you built.** The published bootloader is
+  byte-identical across every app packaged with PyInstaller, malware included,
+  so it is what the signatures match on. One you compiled yourself is not in
+  them.
+* **There is no wheel for what you are building on**, such as an unusual
+  platform or architecture.
+
+It needs a C toolchain -- Visual Studio Build Tools on Windows, the Xcode
+command line tools on Mac -- and the script is Windows only:
+
+```bash
+.venv\Scripts\activate
+build-pyinstaller
+build
+```
+
+`build-pyinstaller` clones PyInstaller, compiles the bootloader with waf, and
+installs that build over the published one. It is the venv it replaces it in,
+so **the next `uv sync` puts the published version back**; re-run the script
+after a sync if you want to keep your own.

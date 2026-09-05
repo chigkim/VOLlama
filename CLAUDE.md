@@ -12,50 +12,39 @@ A **preset** is the unit of configuration: it owns base URL, API key, model, `co
 
 ### Setup Environment
 ```bash
-# Windows
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-
-# Mac/Linux (Python 3.12 required for Mac)
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync
 ```
-
-### Platform-Specific Patches
-```bash
-git apply lib-win.patch   # Windows
-git apply lib-mac.patch   # Mac
-```
+`pyproject.toml` is the one dependency list; there is no `requirements.txt`. It pins `requires-python = "==3.14.*"` and `.python-version` names 3.14.7, so `uv sync` fetches that interpreter itself. `uv.lock` is committed, so a sync reproduces the exact versions. The dev group (pytest, pyinstaller) installs by default; `uv sync --no-dev` leaves it out.
 
 ### Building
 ```bash
-build-pyinstaller.bat  # Windows: PyInstaller setup
-build.bat              # Windows: final build
-./build.sh             # Mac/Linux
-build-debug.bat/.sh    # Debug builds (retain console)
+.venv\Scripts\activate  # or source .venv/bin/activate
+build.bat               # Windows: final build
+./build.sh              # Mac/Linux
+build-debug.bat/.sh     # Debug builds (retain console)
 ```
+`uv sync` installs PyInstaller, so building needs nothing else. `build-pyinstaller.bat` is the optional step for a bootloader compiled here rather than the published one — it needs a C toolchain, and the next `uv sync` puts the wheel back over it. README.md says who wants that and why.
 
 ### Running from source
 ```bash
-python VOLlama.py
+uv run vollama          # the installed command
+uv run python VOLlama.py  # the same thing, with a console to watch
 ```
 
 ### Tests
 ```bash
-pip install -r requirements-dev.txt
-python -m pytest
+uv run python -m pytest tests
 ```
-Run it as `python -m pytest tests`. The suite imports no wxPython and reaches no network. `tests/conftest.py` points the settings store at a temporary directory and hands `settings` a clean object through `Settings.adopt`, so nothing can touch the real `settings.json`.
+The suite imports no wxPython and reaches no network. `tests/conftest.py` points the settings store at a temporary directory and hands `settings` a clean object through `Settings.adopt`, so nothing can touch the real `settings.json`.
 
 ## Architecture
 
 The package is laid out as its layers, and imports only ever point downward.
 
 ```
-VOLlama.py                    entry point: logging, settings.load, wx.App, ChatWindow
+VOLlama.py                    what PyInstaller builds; calls vollama.__main__
 vollama/
+  __main__.py                 entry point: logging, settings.load, wx.App, ChatWindow
   errors.py                   VOLlamaError, ConfigError(field), DocumentError
   resources.py                paths to bundled files, frozen or from source
   config/    store, settings, presets, parameters, prompts
@@ -256,7 +245,7 @@ It does kill a job still inside its yield window. `shell.cancellation` is a `Can
 
 `rag/documents.py` is the one place that knows what can be read: `DOCUMENT_EXTENSIONS` and `IMAGE_EXTENSIONS` (the file dialogs build their filters from them), `load()`, `read_files()`, and `fetch_page()`, which downloads the page once and tries three extractors over that HTML in order, logging each failure rather than swallowing it. How a wx filter is spelled is `ui/window.py`'s own business and used to be written down here, which put a presentation format in the layer furthest from presentation.
 
-The three extractors are three calls — `MainContentExtractor.extract`, `trafilatura.extract`, `BeautifulSoup(...).get_text()` — and were llama_index's `MainContentExtractorReader`, `TrafilaturaWebReader` and `BeautifulSoupWebReader`, which are those same calls each wrapped in a class. Reaching them meant importing `llama_index.readers.web`, whose `__init__` imports all twenty-five of its readers eagerly, so a chat client that reads three kinds of web page depended on playwright, selenium, chromedriver, scrapy, newspaper and firecrawl. The build scripts uninstalled playwright and selenium to keep the package down, which broke that `__init__` until the file was edited by hand again, and the next `pip install -r requirements.txt` undid the edit. Owning the three calls removes the dependency, the uninstall step and the hand-edit together. `BeautifulSoupWebReader` also carried a table of four per-domain scrapers that crawl every linked page of a documentation site; it is keyed on the exact hostname, so it never fired on the `project.readthedocs.io` and `blog.substack.com` addresses anyone actually has, and crawling a whole site is not what attaching a page means.
+The three extractors are three calls — `MainContentExtractor.extract`, `trafilatura.extract`, `BeautifulSoup(...).get_text()` — and were llama_index's `MainContentExtractorReader`, `TrafilaturaWebReader` and `BeautifulSoupWebReader`, which are those same calls each wrapped in a class. Reaching them meant importing `llama_index.readers.web`, whose `__init__` imports all twenty-five of its readers eagerly, so a chat client that reads three kinds of web page depended on playwright, selenium, chromedriver, scrapy, newspaper and firecrawl. The build scripts uninstalled playwright and selenium to keep the package down, which broke that `__init__` until the file was edited by hand again, and the next dependency install undid the edit. Owning the three calls removes the dependency, the uninstall step and the hand-edit together. `BeautifulSoupWebReader` also carried a table of four per-domain scrapers that crawl every linked page of a documentation site; it is keyed on the exact hostname, so it never fired on the `project.readthedocs.io` and `blog.substack.com` addresses anyone actually has, and crawling a whole site is not what attaching a page means.
 
 `_download()` is the only function here that reaches the network, which is what makes the extractors testable without it. It sends a browser `User-Agent`, since a bare python-requests one is refused outright by many sites and each of the three readers sent one of its own, and it falls back to `apparent_encoding` when the response declares no charset — `requests` would otherwise call it ISO-8859-1 and mangle every page not written in Latin-1.
 
