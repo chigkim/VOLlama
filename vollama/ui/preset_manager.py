@@ -57,14 +57,17 @@ CONNECTION_PAGE = 0
 class Invalid(Exception):
     """What a page says when what is on it cannot be written to a preset.
 
-    The message is already worded for the user, and `control` is the field that
-    fixes it, so the dialog can put the focus there without knowing which page
-    raised or what it holds.
+    The one failure this dialog has. The message is already worded for the
+    user, and `control` is the field that fixes it, so the dialog can put the
+    focus there without knowing which page raised or what it holds. `page` is
+    filled in by the dialog, which is the only thing that knows where its own
+    pages are in the notebook.
     """
 
-    def __init__(self, message, control=None):
+    def __init__(self, message, control=None, page=None):
         super().__init__(message)
         self.control = control
+        self.page = page
 
 
 def labelled(panel, grid, row, label, make, tip):
@@ -234,17 +237,18 @@ class ConnectionPage(wx.Panel):
 
 
 class ParametersPage(wx.Panel):
-    """Generation parameters, built from the schema rather than hand-written.
+    """Generation parameters, one box per entry in the schema.
 
-    A control per entry in the parameter schema, so a parameter added to the
-    schema appears here with its description and range and nothing else changes.
+    The schema is what this page is built from, so a parameter added to
+    `config.parameters` appears here with its description and its range and
+    nothing else changes. A box is empty when the parameter is unset, which is
+    what tells the server to use its own default.
     """
 
     def __init__(self, parent):
         super().__init__(parent)
         self.SetName("Parameters")
         self.controls = {}
-        self.parameters = {}
         self.area = wx.ScrolledWindow(self)
         self.area.SetScrollbars(1, 1, 1, 1)
         self.area_sizer = wx.BoxSizer(wx.VERTICAL)
@@ -252,49 +256,54 @@ class ParametersPage(wx.Panel):
         sizer = wx.BoxSizer(wx.VERTICAL)
         sizer.Add(self.area, 1, wx.EXPAND | wx.ALL, 10)
         self.SetSizer(sizer)
+        self._build()
 
-    def load(self, name, preset):
-        self.parameters = parameters.reconcile(preset.parameters)
-        self.area_sizer.Clear(True)
-        self.controls = {}
-        for key, entry in self.parameters.items():
+    def _build(self):
+        """One labelled box per parameter. Built once: the schema cannot change."""
+        for key, entry in parameters.SCHEMA.items():
             row = wx.BoxSizer(wx.HORIZONTAL)
-            label = wx.StaticText(
-                self.area, label=key.replace("_", " ").capitalize() + ":"
+            # The label before the control it names, which is the order a
+            # screen reader pairs them in. See `labelled`.
+            row.Add(
+                wx.StaticText(
+                    self.area, label=key.replace("_", " ").capitalize() + ":"
+                ),
+                0,
+                wx.ALL | wx.CENTER,
+                5,
             )
-            row.Add(label, 0, wx.ALL | wx.CENTER, 5)
-            control = self._control(entry["value"])
+            control = wx.TextCtrl(self.area)
             control.SetName(key)
-            control.SetToolTip(f"Hint: {entry['description']} Range: {entry['range']}")
+            control.SetToolTip(f"Hint: {entry.description} Range: {entry.range}")
             self.controls[key] = control
             row.Add(control, 1, wx.EXPAND | wx.ALL, 5)
             self.area_sizer.Add(row, 0, wx.EXPAND)
         self.area.Layout()
         self.area.FitInside()
 
-    def _control(self, value):
-        if isinstance(value, bool):
-            control = wx.CheckBox(self.area)
-            control.SetValue(value)
-            return control
-        if isinstance(value, list):
-            return wx.TextCtrl(self.area, value=", ".join(value))
-        # None is an unset parameter and shows as an empty box, which is what
-        # tells the server to use its own default.
-        return wx.TextCtrl(self.area, value="" if value is None else str(value))
+    def load(self, name, preset):
+        for key, control in self.controls.items():
+            control.SetValue(_typed(preset.parameters.get(key)))
 
     def save_into(self, preset):
+        values = {}
         for key, control in self.controls.items():
-            if isinstance(control, wx.CheckBox):
-                self.parameters[key]["value"] = control.IsChecked()
-                continue
             try:
-                self.parameters[key]["value"] = parameters.parse_value(
-                    key, control.GetValue(), self.parameters[key]["value"]
-                )
+                value = parameters.parse(key, control.GetValue())
             except ValueError as e:
                 raise Invalid(f"A parameter value is not valid: {e}", control) from None
-        preset.parameters = self.parameters
+            if value is not None:
+                values[key] = value
+        preset.parameters = values
+
+
+def _typed(value):
+    """One parameter value as it is typed into its box, empty when unset."""
+    if value is None:
+        return ""
+    if isinstance(value, list):
+        return ", ".join(value)
+    return str(value)
 
 
 class RetrievalPage(wx.Panel):
@@ -518,7 +527,7 @@ class PromptPage(wx.Panel):
         def run():
             self.library.merge(fetch_shared())
             self._refresh()
-            show_info("Prompts", "Prompts updated successfully.")
+            show_info("Prompts updated successfully.", "Prompts")
 
         self._do(run)
 
@@ -578,8 +587,8 @@ class PresetManager(wx.Dialog):
         self.notebook.AddPage(self.connection, "Connection")
         self.notebook.AddPage(self.parameters, "Parameters")
         self.notebook.AddPage(self.prompt, "System Prompt")
-        # Named for the menu it belongs with, since the Rag menu's items act
-        # on what this page configures.
+        # Named for what a retrieval error message calls it, since that is how
+        # the user is told which page to come to.
         self.notebook.AddPage(self.retrieval, "RAG")
         self.connection.fields["name"].Bind(wx.EVT_KILL_FOCUS, self.on_renamed)
 
@@ -621,7 +630,7 @@ class PresetManager(wx.Dialog):
     def _pages(self):
         """The pages in the order the notebook shows them.
 
-        In that order because `_collect` reports a refusal by its position
+        In that order because `_commit` reports a refusal by its position
         here, and the dialog then selects that tab.
         """
         return (self.connection, self.parameters, self.prompt, self.retrieval)
@@ -637,51 +646,69 @@ class PresetManager(wx.Dialog):
     def _label(self):
         self.preset_button.SetLabel(f"Preset: {self.name() or 'none'}")
 
-    def _collect(self):
-        """Read the pages back into the shown entry, or say why they cannot be.
+    def _commit(self):
+        """Read the pages back into the shown entry. False if they cannot be.
 
-        Returns None when the entry is valid, or a (message, control, page)
-        triple naming what is wrong and where it is fixed. The page that cannot
-        save says so itself, since it is the one that knows which of its own
-        fields the focus belongs in. The rule about whether a preset is usable
-        is the chat's own, so a preset that saves here is a preset that works.
+        A page that cannot save what is on it raises `Invalid` naming its own
+        field, since it is the one that knows which of its controls is wrong;
+        the checks this dialog makes itself raise the same thing. Refusing is
+        done here rather than handed back, so the four places that have to
+        commit before moving on all read `if not self._commit(): return`.
+
+        The rule about whether a preset is usable is the chat's own, and it
+        names the field at fault, so this maps a name to a control and has no
+        second opinion about what makes a preset work.
         """
         if self.index is None:
-            return None
+            return True
         entry = self.entries[self.index]
+        try:
+            name = self._name_on_page()
+            for number, page in enumerate(self._pages()):
+                try:
+                    page.save_into(entry.preset)
+                except Invalid as refusal:
+                    refusal.page = number
+                    raise
+            try:
+                entry.preset.validate()
+            except ConfigError as e:
+                raise Invalid(
+                    str(e), self.connection.fields.get(e.field), CONNECTION_PAGE
+                ) from None
+        except Invalid as refusal:
+            self._refuse(refusal)
+            return False
+        entry.name = name
+        self._label()
+        return True
+
+    def _name_on_page(self):
+        """The name typed on the connection page. Raises Invalid if it is taken."""
         field = self.connection.fields["name"]
         name = field.GetValue().strip()
         if not name:
-            return "Enter a name for this preset.", field, CONNECTION_PAGE
+            raise Invalid("Enter a name for this preset.", field, CONNECTION_PAGE)
         if name in self._others():
-            return f"A preset named {name} already exists.", field, CONNECTION_PAGE
-        for number, page in enumerate(self._pages()):
-            try:
-                page.save_into(entry.preset)
-            except Invalid as e:
-                return str(e), e.control, number
-        try:
-            entry.preset.validate()
-        except ConfigError as e:
-            key = "model" if "model" in str(e) else "base_url"
-            return str(e), self.connection.fields[key], CONNECTION_PAGE
-        entry.name = name
-        self._label()
-        return None
+            raise Invalid(
+                f"A preset named {name} already exists.", field, CONNECTION_PAGE
+            )
+        return name
 
     def _others(self):
         """The names of the presets other than the one being shown."""
         return [e.name for i, e in enumerate(self.entries) if i != self.index]
 
-    def _refuse(self, problem):
+    def _refuse(self, refusal):
         """Say what is wrong, put the focus where it is fixed, and stay put."""
-        message, control, page = problem
-        self.notebook.SetSelection(page)
-        if page == CONNECTION_PAGE:
-            self.connection.set_status(message)
+        message = str(refusal)
+        if refusal.page is not None:
+            self.notebook.SetSelection(refusal.page)
+            if refusal.page == CONNECTION_PAGE:
+                self.connection.set_status(message)
         wx.MessageBox(message, "Preset", wx.OK | wx.ICON_ERROR)
-        if control:
-            control.SetFocus()
+        if refusal.control:
+            refusal.control.SetFocus()
 
     def on_renamed(self, event):
         """Keep the button in step with the name box on leaving it.
@@ -725,9 +752,7 @@ class PresetManager(wx.Dialog):
     def on_choose(self, event, index):
         if index == self.index:
             return
-        problem = self._collect()
-        if problem:
-            self._refuse(problem)
+        if not self._commit():
             return
         self._show(index)
         # Focus follows the value that changed, which here is the button's own
@@ -737,11 +762,8 @@ class PresetManager(wx.Dialog):
     def on_new(self, event, preset=None, name="New Preset"):
         # Called with no event to add a copy or the first preset, neither of
         # which can be refused for what is on the pages.
-        if event is not None:
-            problem = self._collect()
-            if problem:
-                self._refuse(problem)
-                return
+        if event is not None and not self._commit():
+            return
         entry = Entry(self._free(name), preset or Preset(base_url=STARTING_URL))
         self.entries.append(entry)
         self._show(len(self.entries) - 1)
@@ -749,9 +771,7 @@ class PresetManager(wx.Dialog):
         self.connection.fields["name"].SelectAll()
 
     def on_duplicate(self, event):
-        problem = self._collect()
-        if problem:
-            self._refuse(problem)
+        if not self._commit():
             return
         entry = self.entries[self.index]
         self.on_new(None, copy.deepcopy(entry.preset), f"{entry.name} copy")
@@ -793,9 +813,7 @@ class PresetManager(wx.Dialog):
     # ----------------------------------------------------------------- saving
 
     def on_ok(self, event):
-        problem = self._collect()
-        if problem:
-            self._refuse(problem)
+        if not self._commit():
             return
         try:
             # The preset the manager was left on is the one the user means to

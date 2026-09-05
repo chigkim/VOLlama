@@ -8,13 +8,14 @@ endpoint takes the same OpenAI-compatible path; what differs between them is
 exactly the fields below.
 
 This module owns the rules as well as the shape. Whether a preset is usable,
-whether a name is free, and which preset becomes active when the current one is
-deleted are decisions about presets, not about dialogs, so the editor calls into
-here rather than implementing them a second time.
+whether a name is free, and which preset becomes active when the list changes
+are decisions about presets, not about dialogs, so the editor calls into here
+rather than implementing them a second time. There are two ways to write them
+and no more: `replace`, which takes the whole list from the editor, and
+`activate`, which is the toolbar switching between them.
 """
 
-import copy
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field, fields
 
 from vollama.config import parameters
 from vollama.config.settings import settings
@@ -45,7 +46,9 @@ class Preset:
     model: str = ""
     context_window: int = DEFAULT_CONTEXT_WINDOW
     system: str = ""
-    parameters: dict = field(default_factory=parameters.defaults)
+    # Only the generation parameters this preset sets, as name to value. The
+    # schema they are named in lives in config.parameters and is not stored.
+    parameters: dict = field(default_factory=dict)
 
     # The embedding endpoint and how much text to retrieve from it. Here
     # rather than global because a preset is a server: the endpoint that
@@ -64,42 +67,27 @@ class Preset:
 
     @classmethod
     def from_dict(cls, data):
-        preset = cls(
-            base_url=str(data.get("base_url") or ""),
-            api_key=str(data.get("api_key") or ""),
-            model=str(data.get("model") or ""),
-            context_window=_whole(data.get("context_window")),
-            system=str(data.get("system") or ""),
-            parameters=copy.deepcopy(data.get("parameters") or {}),
-            embedding_base_url=str(
-                data.get("embedding_base_url") or DEFAULT_EMBEDDING_URL
-            ),
-            embedding_api_key=str(data.get("embedding_api_key") or ""),
-            embedding_model=str(data.get("embedding_model") or DEFAULT_EMBEDDING_MODEL),
-            chunk_size=_whole(data.get("chunk_size"), 1024),
-            chunk_overlap=_number(data.get("chunk_overlap"), int, 20),
-            similarity_top_k=_whole(data.get("similarity_top_k"), 2),
-            similarity_cutoff=_number(data.get("similarity_cutoff"), float, 0.0),
-        )
-        parameters.reconcile(preset.parameters)
-        return preset
+        """A preset from a parsed settings file, defaulting what it cannot use.
+
+        Every field is coerced by the type it is declared with above, so the
+        dataclass is the only place the shape of a preset is written down —
+        the same way `Settings` reads itself. A hand-edited file can hold
+        anything in any field; a value that will not convert falls back to the
+        default rather than failing the load and taking the api keys with it.
+        """
+        values = {"parameters": parameters.checked(data.get("parameters"))}
+        for one in fields(cls):
+            raw = data.get(one.name)
+            if one.name == "parameters" or raw is None or raw == "":
+                continue  # the field keeps its own default
+            value = _as(one.type, raw, one.default)
+            if one.name in POSITIVE and value <= 0:
+                value = one.default
+            values[one.name] = value
+        return cls(**values)
 
     def to_dict(self):
-        return {
-            "base_url": self.base_url,
-            "api_key": self.api_key,
-            "model": self.model,
-            "context_window": self.context_window,
-            "system": self.system,
-            "parameters": self.parameters,
-            "embedding_base_url": self.embedding_base_url,
-            "embedding_api_key": self.embedding_api_key,
-            "embedding_model": self.embedding_model,
-            "chunk_size": self.chunk_size,
-            "chunk_overlap": self.chunk_overlap,
-            "similarity_top_k": self.similarity_top_k,
-            "similarity_cutoff": self.similarity_cutoff,
-        }
+        return asdict(self)
 
     def options(self):
         """The generation parameters that are set, ready for the request."""
@@ -112,22 +100,32 @@ class Preset:
         usable preset is. They did not before: the editor required a name and a
         base URL, the chat required a base URL and a model, and a preset saved
         without a model failed only when you tried to use it.
+
+        The error names the field it is about, so the editor can put the focus
+        there without reading the sentence to work out which one it means.
         """
         if not self.base_url.strip():
-            raise ConfigError("This preset has no base URL.")
+            raise ConfigError("This preset has no base URL.", field="base_url")
         if not self.model.strip():
-            raise ConfigError("This preset has no model.")
+            raise ConfigError("This preset has no model.", field="model")
 
 
-def _whole(value, default=DEFAULT_CONTEXT_WINDOW):
-    """A positive whole number from the file, or the default. 0 is not one."""
-    return _number(value, int, default) or default
+# Fields that count something and so cannot be zero or negative, whatever a
+# hand-edited file says: a context window of 0 would compact every turn, and a
+# chunk size of 0 would index nothing.
+POSITIVE = ("context_window", "chunk_size", "similarity_top_k")
 
 
-def _number(value, kind, default):
-    """A number from the file, whatever a hand-edited file put in the field."""
+def _as(kind, raw, default):
+    """`raw` as the type this field is declared with, or the field's default.
+
+    `kind` is the annotation off the dataclass field, which is the class itself
+    and so can be called: `str`, `int`, `float`. Do not add
+    `from __future__ import annotations` to this module — it would make every
+    annotation a string, and a string is not callable.
+    """
     try:
-        return kind(value)
+        return kind(raw)
     except (TypeError, ValueError):
         return default
 
@@ -178,19 +176,10 @@ def require_active():
     try:
         preset.validate()
     except ConfigError as e:
-        raise ConfigError(f"{e} Press control+p to edit it.") from None
+        raise ConfigError(
+            f"{e} Press control+p to edit it.", field=e.field
+        ) from None
     return preset
-
-
-def context_window():
-    """How many tokens the active preset's model holds.
-
-    A preset field, not a global one, because it describes one model on one
-    server. It is never sent: VOLlama uses it to decide when to compact the
-    conversation and to size retrieval prompts.
-    """
-    preset = active()
-    return preset.context_window if preset else DEFAULT_CONTEXT_WINDOW
 
 
 def retrieval():
@@ -201,31 +190,6 @@ def retrieval():
     on the embedding request instead, where the reason is visible.
     """
     return active() or Preset()
-
-
-def create(name, preset):
-    """Add a new preset and make it active. The name must be free."""
-    name = _named(name)
-    if name in settings.presets:
-        raise ConfigError(f"A preset named {name} already exists.")
-    _write(name, preset)
-
-
-def update(name, new_name, preset):
-    """Replace a preset, renaming it if new_name differs, and make it active."""
-    new_name = _named(new_name)
-    if new_name != name and new_name in settings.presets:
-        raise ConfigError(f"A preset named {new_name} already exists.")
-    settings.presets.pop(name, None)
-    _write(new_name, preset)
-
-
-def delete(name):
-    """Remove a preset. The first of what is left becomes active."""
-    settings.presets.pop(name, None)
-    remaining = names()
-    settings.active_preset = remaining[0] if remaining else ""
-    settings.save()
 
 
 def replace(items, active=""):
@@ -262,11 +226,5 @@ def activate(name):
 def _named(name):
     name = (name or "").strip()
     if not name:
-        raise ConfigError("Enter a name for this preset.")
+        raise ConfigError("Enter a name for this preset.", field="name")
     return name
-
-
-def _write(name, preset):
-    settings.presets[name] = preset.to_dict()
-    settings.active_preset = name
-    settings.save()

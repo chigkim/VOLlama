@@ -160,3 +160,17 @@ def test_searching_does_not_spend_a_round(rag):
 def test_an_index_with_nothing_in_it_offers_no_search(isolated):
     isolated.tools = False
     assert toolset.for_turn(RagIndex()) == []
+
+
+def test_the_machine_is_described_only_to_a_model_that_can_act_on_it(rag, isolated):
+    """The same gate as the five tools, read in the same place.
+
+    An index is loaded here to make the point that it is not the second gate:
+    search reads documents, and reading them says nothing about this machine.
+    """
+    isolated.tools = False
+    assert toolset.for_turn(rag)  # search is offered
+    assert toolset.environment() is None
+
+    isolated.tools = True
+    assert "Working directory" in toolset.environment()

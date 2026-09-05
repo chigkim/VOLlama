@@ -22,10 +22,8 @@ class ScreenReaderSpeech:
     def voices(self):
         return []
 
-    @property
-    def voice(self):
-        return ""
-
-    @property
-    def rate(self):
-        return 0.0
+    # Plain attributes rather than read-only properties: there is nothing to
+    # configure here, and a backend that raised on being set would make
+    # `speech.create` ask which backend it was holding.
+    voice = ""
+    rate = 0.0

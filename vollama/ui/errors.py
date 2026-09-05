@@ -27,8 +27,12 @@ def show_error(error, title="Error"):
     _on_gui_thread(_dialog, str(error) or error.__class__.__name__, title, wx.ICON_ERROR)
 
 
-def show_info(title, message):
-    """Report something that went right and is worth saying."""
+def show_info(message, title="VOLlama"):
+    """Report something that went right and is worth saying.
+
+    The same argument order as `show_error`: what to say, then what to call the
+    box. The two used to take it the other way round from each other.
+    """
     _on_gui_thread(_dialog, message, title, wx.ICON_INFORMATION)
 
 

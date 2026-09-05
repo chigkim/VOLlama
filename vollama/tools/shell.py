@@ -15,6 +15,7 @@ have to fit inside one tool call; the model reattaches with poll. `JobTable`
 owns those jobs, and it is the only mutable state in this module.
 """
 
+import functools
 import os
 import platform
 import re
@@ -27,7 +28,7 @@ import threading
 import time
 from contextlib import contextmanager
 
-from vollama.tools.workspace import valid_directory
+from vollama.tools.workspace import checked_directory
 
 WINDOWS = platform.system() == "Windows"
 
@@ -309,9 +310,7 @@ def interpreter():
     return sys.executable
 
 
-_version = ""
-
-
+@functools.lru_cache(maxsize=1)
 def python_version():
     """The version of the interpreter run uses, asked once and remembered.
 
@@ -320,20 +319,19 @@ def python_version():
     bare `python` in a command will be, and says nothing about the Python a
     project uses, which the model has to go and find.
     """
-    global _version
-    if not _version:
-        try:
-            out = subprocess.run(
-                [interpreter(), "-c", "import platform;print(platform.python_version())"],
-                capture_output=True,
-                text=True,
-                timeout=15,
-                **({"creationflags": subprocess.CREATE_NO_WINDOW} if WINDOWS else {}),
-            )
-            _version = out.stdout.strip() or "unknown"
-        except Exception:
-            _version = "unknown"
-    return _version
+    try:
+        out = subprocess.run(
+            [interpreter(), "-c", "import platform;print(platform.python_version())"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+            **({"creationflags": subprocess.CREATE_NO_WINDOW} if WINDOWS else {}),
+        )
+    except Exception:
+        # Whatever went wrong asking, the answer is the same and the
+        # environment description still has to be written.
+        return "unknown"
+    return out.stdout.strip() or "unknown"
 
 
 def shorten(text, path=None):
@@ -577,21 +575,28 @@ class Job:
         self.reported = False  # has the model been told it finished
         self.lock = threading.Lock()
         self.out = Stream()
-        self.readers = [self.reader(process.stdout, self.out)]
+        # One reader for one pipe: stderr is merged into stdout at the pipe, so
+        # there is one stream to drain and one thread draining it. It is drained
+        # whether or not anybody polls, because a full pipe deadlocks the
+        # process writing to it.
+        self.reader = self._start_reader()
 
-    def reader(self, pipe, stream):
+    def _start_reader(self):
         def pump():
+            pipe = self.process.stdout
             try:
                 for line in iter(pipe.readline, b""):
                     with self.lock:
-                        stream.write(decode(line))
+                        self.out.write(decode(line))
                         self.spoke = time.monotonic()
-            except Exception:
+            except (OSError, ValueError):
+                # The pipe was closed under us, by a kill or by the process
+                # going away. There is nothing left to read and nothing to say.
                 pass
             finally:
                 try:
                     pipe.close()
-                except Exception:
+                except OSError:
                     pass
 
         thread = threading.Thread(target=pump, daemon=True)
@@ -610,14 +615,12 @@ class Job:
             return time.monotonic() - self.spoke
 
     def drain(self, seconds=5):
-        """Give the readers a moment to finish before we read their buffers.
+        """Give the reader a moment to finish before we read its buffer.
 
         A process can exit while a grandchild still holds the pipe, so this
         cannot block forever: whatever arrived by then is what we report.
         """
-        deadline = time.monotonic() + seconds
-        for thread in self.readers:
-            thread.join(max(0, deadline - time.monotonic()))
+        self.reader.join(seconds)
 
     def kill(self):
         """Stop the process and everything it started."""
@@ -979,7 +982,7 @@ def run(command, timeout=DEFAULT_TIMEOUT, workdir=None):
         timeout = DEFAULT_TIMEOUT
     timeout = min(timeout, MAX_TIMEOUT)
     try:
-        workdir = valid_directory(workdir)
+        workdir = checked_directory(workdir)
     except ValueError as e:
         return str(e)
     try:

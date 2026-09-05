@@ -78,6 +78,16 @@ class ChatView(Protocol):
     def tool_result(self, result: str) -> None:
         """What that tool returned."""
 
+    def sources(self, description: str) -> None:
+        """What a retrieval was answered from, already written out as text.
+
+        Reported every time rather than only when the user asked to see it:
+        whether the passages are printed is a Show Context question, which is a
+        fact about what is on screen right now, and every other question of
+        that kind — whether reasoning is shown, whether the reply is spoken — is
+        answered on this side of the port too.
+        """
+
     def notice(self, text: str) -> None:
         """Something the user should read that the model did not say.
 
@@ -103,5 +113,6 @@ class NullView:
     def tool_called(self, description): ...
     def tool_result(self, result): ...
     def notice(self, text): ...
+    def sources(self, description): ...
     def stats(self, stats): ...
     def finished(self): ...

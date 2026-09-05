@@ -29,8 +29,6 @@ from openai import OpenAI
 import tiktoken_ext  # noqa: F401
 from tiktoken_ext import openai_public  # noqa: F401
 
-from vollama.config.settings import settings
-
 # Generation parameters every OpenAI-compatible endpoint understands. Anything
 # else in the schema stays local and is never sent, because these go out as
 # top-level fields of the request and a name the server does not know raises
@@ -106,16 +104,6 @@ class Client:
         answer = self.api.chat.completions.create(**self._request(messages))
         choices = answer.choices or []
         return (choices[0].message.content or "") if choices else ""
-
-
-def tools_enabled():
-    """Whether the model is allowed to call tools.
-
-    One switch for the whole application, on the Chat menu, rather than a preset
-    field: it answers "do I want the model touching this machine right now",
-    which changes mid-chat, not "which server is this".
-    """
-    return bool(settings.tools)
 
 
 def count(text):

@@ -14,6 +14,7 @@ endpoint included.
 import logging
 
 from llama_index.core import (
+    Document,
     Settings,
     StorageContext,
     VectorStoreIndex,
@@ -199,13 +200,8 @@ class RagIndex:
         nodes = self.index.as_retriever(
             similarity_top_k=preset.similarity_top_k
         ).retrieve(question)
-        for each in self._filters(preset):
-            nodes = each.postprocess_nodes(nodes, query_str=question)
-        return nodes
-
-    @staticmethod
-    def _filters(preset):
-        return [SimilarityPostprocessor(similarity_cutoff=preset.similarity_cutoff)]
+        cutoff = SimilarityPostprocessor(similarity_cutoff=preset.similarity_cutoff)
+        return cutoff.postprocess_nodes(nodes, query_str=question)
 
     def sources(self):
         """The chunks the last answer was built from."""
@@ -213,8 +209,6 @@ class RagIndex:
 
 
 def _as_document(text, source):
-    from llama_index.core import Document
-
     return [Document(text=text, metadata={"file_name": source})]
 
 

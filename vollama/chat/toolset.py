@@ -9,11 +9,16 @@ in order to ask a question about a book.
 This is the layer that can compose the two, because the index is the chat's and
 the registry is below it. `rag.search` therefore hands out plain functions and
 a schema, and the `Tool` record is made here.
+
+Both gates are read here and nowhere else, `environment()` included: what the
+machine looks like is only told to a model that can act on it, which is the same
+question as whether to offer the five, and answering it in two modules is how
+the two answers come apart.
 """
 
 import functools
 
-from vollama.chat import client
+from vollama.config.settings import settings
 from vollama.rag import search
 from vollama.tools import registry
 
@@ -25,10 +30,20 @@ def for_turn(index):
     caching the prompt prefix keeps that cache when a document is indexed,
     which rewrites the search tool's description with the new file names.
     """
-    tools = list(registry.REGISTRY) if client.tools_enabled() else []
+    tools = list(registry.REGISTRY) if settings.tools else []
     if index is not None and index.ready():
         tools.append(searching(index))
     return tools
+
+
+def environment():
+    """What to tell the model about this machine, or None when it cannot act.
+
+    Left out unless the machine tools are on, for the same reason the summary
+    request drops the tool list: a model still being told how to run commands
+    writes commands rather than prose.
+    """
+    return registry.environment() if settings.tools else None
 
 
 def searching(index):

@@ -52,5 +52,17 @@ def test_a_directory_is_not_a_file(tmp_path):
 
 def test_a_workdir_that_is_not_there_is_reported(tmp_path):
     with pytest.raises(ValueError, match="no directory"):
-        workspace.valid_directory(str(tmp_path / "gone"))
-    assert workspace.valid_directory(str(tmp_path)) == str(tmp_path)
+        workspace.checked_directory(str(tmp_path / "gone"))
+    assert workspace.checked_directory(str(tmp_path)) == str(tmp_path)
+
+
+def test_nothing_for_a_workdir_means_the_working_directory(isolated, tmp_path):
+    isolated.workdir = str(tmp_path)
+    assert workspace.checked_directory("") == str(tmp_path)
+
+
+def test_a_relative_workdir_is_taken_from_the_working_directory(isolated, tmp_path):
+    """The same rule as a relative path, since it goes through the same resolve."""
+    isolated.workdir = str(tmp_path)
+    (tmp_path / "inside").mkdir()
+    assert workspace.checked_directory("inside") == str(tmp_path / "inside")

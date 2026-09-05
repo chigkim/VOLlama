@@ -97,18 +97,23 @@ def checked(path, must_exist=True):
     return full
 
 
-def valid_directory(path):
-    """A directory a command may run in, or None to use the working directory.
+def checked_directory(path):
+    """A directory a command may run in, or the working directory for nothing.
+
+    Through `resolve` like every other path, so a relative directory means the
+    same thing in `run`'s workdir as it does in `read`'s path. It did not
+    before, and two meanings for a relative path inside one toolset is a trap
+    rather than a feature.
 
     Raises ValueError with the message the model should read if it named one
     that is not there.
     """
-    path = str(path or "").strip()
-    if not path:
+    if not str(path or "").strip():
         return working_dir()
-    if not os.path.isdir(path):
+    full = resolve(path)
+    if not os.path.isdir(full):
         raise ValueError(
-            f"There is no directory {path}, so the command did not run. "
+            f"There is no directory {full}, so the command did not run. "
             "Pass an existing directory as workdir, or leave it out."
         )
-    return path
+    return full

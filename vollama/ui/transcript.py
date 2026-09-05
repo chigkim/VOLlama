@@ -150,6 +150,15 @@ class TranscriptView:
     def notice(self, text):
         self._append(f"{text}{os.linesep}")
 
+    def sources(self, description):
+        """The passages a retrieval was answered from, if the user wants them.
+
+        Show Context is a checkbox on the Documents menu, so this is the same
+        kind of decision as Show Reasoning and is made in the same place.
+        """
+        if settings.show_context:
+            self.notice(description)
+
     def stats(self, stats):
         self.status(
             f"{stats.total_tokens} tokens in {stats.total_seconds:.2f} seconds. "
@@ -167,7 +176,7 @@ class TranscriptView:
 
     def _speak_sentences(self, text):
         """Hand text to the synthesiser a finished sentence at a time."""
-        if not settings.speakResponse:
+        if not settings.speak_response:
             return
         self.sentence += text
         if SENTENCE_END.search(self.sentence):
@@ -175,7 +184,7 @@ class TranscriptView:
 
     def _flush_sentence(self):
         spoken, self.sentence = self.sentence.strip(), ""
-        if spoken and settings.speakResponse:
+        if spoken and settings.speak_response:
             self._later(self.speech.speak, spoken)
 
     # --------------------------------------------------------------- plumbing

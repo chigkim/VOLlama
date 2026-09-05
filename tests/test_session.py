@@ -20,7 +20,7 @@ from vollama.errors import DocumentError
 
 @pytest.fixture(autouse=True)
 def a_usable_preset(isolated):
-    presets.create("test", Preset(base_url="http://localhost/v1/", model="m"))
+    presets.replace([("test", Preset(base_url="http://localhost/v1/", model="m"))], "test")
 
 
 @pytest.fixture
@@ -324,7 +324,7 @@ def test_a_reply_cut_short_is_retried_once_after_compacting(build, monkeypatch):
     for n in range(4):
         session.conversation.add_user(f"q{n}")
         session.conversation.add_assistant(f"a{n}")
-    presets.update("test", "test", Preset(base_url="u", model="m", parameters=_max(500)))
+    presets.replace([("test", Preset(base_url="u", model="m", parameters=_max(500)))], "test")
     view = fakes.RecordingView()
 
     session.ask("go on", view)
@@ -345,7 +345,7 @@ def test_the_cut_short_retry_happens_at_most_once(build, monkeypatch):
     for n in range(4):
         session.conversation.add_user(f"q{n}")
         session.conversation.add_assistant(f"a{n}")
-    presets.update("test", "test", Preset(base_url="u", model="m", parameters=_max(500)))
+    presets.replace([("test", Preset(base_url="u", model="m", parameters=_max(500)))], "test")
 
     session.ask("go on", fakes.RecordingView())
 
@@ -372,11 +372,8 @@ def test_a_background_command_that_ended_rides_along_with_the_next_message(
 
 
 def _max(tokens):
-    from vollama.config import parameters
-
-    values = parameters.defaults()
-    values["max_tokens"]["value"] = tokens
-    return values
+    """A preset's parameters with a reply length asked for."""
+    return {"max_tokens": tokens}
 
 
 class Node:
@@ -463,7 +460,7 @@ def test_a_search_the_model_asked_for_is_shown_as_context(build, isolated):
 
     session.ask("who wrote it?", view)
 
-    assert "similarity 0.50" in view.of("notice")[0][0]
+    assert "similarity 0.50" in view.of("sources")[0][0]
 
 
 def test_an_empty_retrieval_answer_is_explained_rather_than_left_blank():

@@ -9,6 +9,12 @@ Saving is explicit. `settings.save()` after a change. The previous design saved
 on every attribute assignment, which read well until a nested value changed —
 editing a preset in place never reached the disk — and needed a helper whose
 body was `settings.presets = settings.presets` to work around it.
+
+Loading is explicit too. `settings` starts as the defaults and `load()` reads
+the file into it, called once by `VOLlama.main`. Reading the disk while the
+module was being imported made `import vollama.config.settings` do I/O, made
+the answer to "was the file readable" a module constant that the window had to
+import, and left the test suite resetting a singleton it did not own.
 """
 
 import logging
@@ -27,6 +33,13 @@ SETTINGS_VERSION = 1
 @dataclass
 class Settings:
     """The settings file, in memory."""
+
+    # Not a field, so it is neither written to the file nor compared: whether
+    # saving is allowed is a fact about this run, not a setting. `load()` clears
+    # it for a file this build cannot read, because the promise made to the user
+    # then is that their old file — and the api keys in it — is still there. One
+    # menu toggle used to be enough to save the defaults over it.
+    writable = True
 
     version: int = SETTINGS_VERSION
     # The key the api keys in the file are obfuscated with. It lives in the
@@ -49,8 +62,10 @@ class Settings:
     # Presentation and accessibility.
     sound: bool = True
     screenreader: bool = False
-    speakResponse: bool = False  # spelling fixed by the file format, not by us
-    voice: str = "default"
+    speak_response: bool = False
+    # The platform's own identifier for the chosen voice. Empty means the
+    # voice the system would use on its own.
+    voice: str = ""
     rate: float = 0.0
     show_reasoning: bool = True
 
@@ -73,13 +88,39 @@ class Settings:
     def to_dict(self):
         return asdict(self)
 
+    def adopt(self, other):
+        """Take every field from `other`, in place.
+
+        In place because every module imported this object by value, so
+        rebinding the name here would leave them all holding the old one. It is
+        what `load()` does with the file, and what the test fixture does with a
+        clean object.
+        """
+        for one in fields(self):
+            setattr(self, one.name, getattr(other, one.name))
+
     def save(self):
         """Write the settings out. Call it after changing one."""
+        if not self.writable:
+            log.error("Not saving over a settings file this build cannot read.")
+            return
         store.write(store.settings_path(), self.to_dict())
 
 
-def _load():
-    """The settings on disk, and whether the file was one we understand."""
+# The application's settings. One object, because there is one settings file;
+# `load()` fills it in.
+settings = Settings()
+
+
+def load():
+    """Read the settings file into `settings`. Returns whether it was readable.
+
+    False means the file is there and is not one this build understands, and the
+    caller has to say so: the settings in memory are the defaults, and saving
+    over the file would take the user's presets and api keys with it. The file
+    is left exactly as it is, so an api key can still be recovered from it and
+    choosing Reset Settings stays the user's decision.
+    """
     path = store.settings_path()
     try:
         data = store.read(path)
@@ -87,21 +128,18 @@ def _load():
         # A file that exists but will not parse is not replaced: overwriting
         # somebody's presets because of a bad read is not a recovery.
         log.error("Could not read %s: %s", path, e)
-        return Settings(), False
+        settings.writable = False
+        return False
     if data is None:
-        fresh = Settings(secret=store.new_secret())
-        fresh.save()
-        return fresh, True
+        settings.adopt(Settings(secret=store.new_secret()))
+        settings.save()
+        return True
     if data.get("version") != SETTINGS_VERSION:
-        # Left on disk exactly as it is, so the user can still get their api
-        # keys out of it, and so choosing Reset stays their decision.
         log.error("%s is version %s, not %s", path, data.get("version"), SETTINGS_VERSION)
-        return Settings(), False
-    loaded = Settings.from_dict(data)
-    if not loaded.secret:
-        loaded.secret = store.new_secret()
-        loaded.save()
-    return loaded, True
-
-
-settings, compatible = _load()
+        settings.writable = False
+        return False
+    settings.adopt(Settings.from_dict(data))
+    if not settings.secret:
+        settings.secret = store.new_secret()
+        settings.save()
+    return True

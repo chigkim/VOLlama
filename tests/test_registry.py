@@ -10,8 +10,7 @@ from vollama.tools import registry
 def test_every_tool_is_offered_exactly_once():
     names = [tool.name for tool in registry.REGISTRY]
     assert names == ["run", "poll", "read", "write", "edit"]
-    assert len(registry.TOOLS) == len(names)
-    assert [schema["function"]["name"] for schema in registry.TOOLS] == names
+    assert sorted(registry.BY_NAME) == sorted(names)
 
 
 def test_free_calls_are_the_ones_that_only_look():

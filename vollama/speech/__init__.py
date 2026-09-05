@@ -11,9 +11,14 @@ over a system API that already does the work.
     voice         the current voice identifier
     rate          the current speaking rate
 
-None of them opens a dialog. They used to, each with its own near-identical
-copy, which made a speech driver depend on wxPython; `ui.speech_dialog` asks
-the question now and sets the answer through these five names.
+None of them opens a dialog, and none of them saves anything. They used to do
+both: each carried its own copy of the voice dialog, which made a speech driver
+depend on wxPython, and each wrote `settings.voice` and `settings.rate` inside
+its own property setters — the same responsibility implemented twice, with two
+different answers to what happens when the platform refuses the voice.
+`ui.speech_dialog` asks the question, `create()` below applies what was stored
+last time, and `remember()` applies and stores a new choice. A backend drives
+the device and nothing else.
 
 `voices()` hands back `Voice` records while `voice` stays a bare identifier
 string, because that string is what `settings.voice` holds and what each
@@ -23,6 +28,8 @@ platform API takes back.
 import platform
 from dataclasses import dataclass
 from typing import Protocol
+
+from vollama.config.settings import settings
 
 
 @dataclass(frozen=True)
@@ -68,15 +75,14 @@ class Voice:
 
 
 class Speech(Protocol):
+    """What a backend has to be. `voice` and `rate` are read and written."""
+
     def speak(self, text: str) -> None: ...
     def stop(self) -> None: ...
     def voices(self) -> list[Voice]: ...
 
-    @property
-    def voice(self) -> str: ...
-
-    @property
-    def rate(self) -> float: ...
+    voice: str
+    rate: float
 
 
 def group(voices):
@@ -123,7 +129,36 @@ def described(description):
 
 
 def create(use_screen_reader):
-    """The speech backend for this machine.
+    """The speech backend for this machine, set to the stored voice and rate."""
+    backend = _backend(use_screen_reader)
+    # A voice the machine no longer has, or a backend with no voices at all, is
+    # left to the platform's own default rather than reported: there is nothing
+    # for the user to do about it here, and silence would be worse.
+    if settings.voice:
+        backend.voice = settings.voice
+    if settings.rate:
+        backend.rate = settings.rate
+    return backend
+
+
+def remember(backend, voice, rate):
+    """Apply a chosen voice and rate, and keep them for the next run.
+
+    One place, because the two backends that can be configured used to do this
+    for themselves and did not agree: one saved only what the platform accepted,
+    the other saved first and could store a voice it then failed to find.
+    """
+    if voice:
+        backend.voice = voice
+        settings.voice = voice
+    if rate is not None:
+        backend.rate = rate
+        settings.rate = float(rate)
+    settings.save()
+
+
+def _backend(use_screen_reader):
+    """The backend class for this machine.
 
     Imported here rather than at the top of the module because three of the
     four import a platform library that only exists on one platform.

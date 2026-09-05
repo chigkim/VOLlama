@@ -65,9 +65,6 @@ REGISTRY = (
 
 BY_NAME = {tool.name: tool for tool in REGISTRY}
 
-# What goes into the request, when tools are on.
-TOOLS = [tool.schema for tool in REGISTRY]
-
 
 def find(name, extra=()):
     """The tool with this name, looking in the turn's own tools first.

@@ -22,8 +22,9 @@ from vollama.errors import DocumentError
 log = logging.getLogger(__name__)
 
 # What can be read as a document, for attaching and for indexing alike. The
-# file dialogs build their filter from this, so a type added here appears
-# everywhere it should.
+# file dialogs build their filters from these two lists, so a type added here
+# appears everywhere it should. How a filter is spelled is the window's own
+# business, and used to be written out down here.
 DOCUMENT_EXTENSIONS = (
     ".txt",
     ".md",
@@ -51,12 +52,6 @@ PAGE_READERS = (
 )
 
 TIMEOUT = 30
-
-
-def wildcard(label, extensions):
-    """A wx file-dialog filter built from an extension list."""
-    patterns = ";".join(f"*{extension}" for extension in extensions)
-    return f"{label} ({patterns})|{patterns}"
 
 
 def load(source):

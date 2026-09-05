@@ -14,7 +14,6 @@ from pathlib import Path
 import win32com.client.dynamic
 import win32com.client.gencache
 
-from vollama.config.settings import settings
 from vollama.speech import described
 
 log = logging.getLogger(__name__)
@@ -23,9 +22,6 @@ log = logging.getLogger(__name__)
 class SapiSpeech:
     def __init__(self):
         self.synth = _dispatch()
-        if settings.voice and settings.voice != "default":
-            self.voice = settings.voice
-            self.rate = settings.rate
 
     def speak(self, text):
         # 1 is SPF_ASYNC: queue it and return, so streaming text is not blocked
@@ -53,11 +49,6 @@ class SapiSpeech:
     @voice.setter
     def voice(self, identifier):
         def apply():
-            settings.voice = identifier
-            settings.save()
-            if "default" in identifier:
-                self.synth = _dispatch()
-                return
             for voice in self.synth.GetVoices():
                 if voice.GetDescription() == identifier:
                     self.synth.Voice = voice
@@ -71,8 +62,6 @@ class SapiSpeech:
 
     @rate.setter
     def rate(self, rate):
-        settings.rate = rate
-        settings.save()
         self.synth.Rate = int(rate)
 
     def _repaired(self, action):

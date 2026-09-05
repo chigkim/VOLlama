@@ -13,7 +13,6 @@ import AppKit
 import objc
 from Foundation import NSLocale, NSObject
 
-from vollama.config.settings import settings
 from vollama.speech import Voice
 
 
@@ -40,10 +39,6 @@ class MacSpeech:
         self.synth = AppKit.NSSpeechSynthesizer.alloc().init()
         self.delegate = _Delegate.alloc().initWithOwner_(self)
         self.synth.setDelegate_(self.delegate)
-        if settings.voice and settings.voice != "default":
-            self.voice = settings.voice
-        if settings.rate:
-            self.rate = settings.rate
 
     def speak(self, text):
         self.queue.put(text)
@@ -86,11 +81,10 @@ class MacSpeech:
 
     @voice.setter
     def voice(self, identifier):
-        if identifier not in set(AppKit.NSSpeechSynthesizer.availableVoices()):
-            return
-        if self.synth.setVoice_(identifier):
-            settings.voice = identifier
-            settings.save()
+        # A voice this machine does not have is ignored rather than passed on,
+        # since NSSpeechSynthesizer answers a bad identifier by falling silent.
+        if identifier in set(AppKit.NSSpeechSynthesizer.availableVoices()):
+            self.synth.setVoice_(identifier)
 
     @property
     def rate(self):
@@ -99,8 +93,6 @@ class MacSpeech:
     @rate.setter
     def rate(self, rate):
         self.synth.setRate_(float(rate))
-        settings.rate = float(rate)
-        settings.save()
 
 
 def _voice(identifier):

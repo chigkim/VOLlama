@@ -27,10 +27,11 @@ SUMMARY = "summary"  # the handoff summary standing in for older messages
 # handed what it thought last time.
 REASONING = "reasoning"
 
-# What `extra` is called in a saved chat. The old name, because a file written
-# by an earlier build has to keep loading; `Settings.speakResponse` is the same
-# kind of exception, for the same reason.
-EXTRA = "additional_kwargs"
+# What `extra` is called in a saved chat: the same thing it is called here.
+# It used to be written out as `additional_kwargs`, named after the field of
+# llama_index's ChatMessage that this layer replaced — a key in the user's own
+# files named after a class the program no longer contains.
+EXTRA = "extra"
 
 # How many of your messages back tool calls and their results are still sent.
 # 1 means the turn in progress only.

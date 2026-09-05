@@ -11,7 +11,7 @@ everything a worker sends back goes through `TranscriptView` or
 `ui.errors`, which are the two places that know about `wx.CallAfter`.
 """
 
-import codecs
+import dataclasses
 import functools
 import json
 import logging
@@ -23,13 +23,13 @@ import sounddevice
 import soundfile
 import wx
 
-from vollama import BUILD, resources
+from vollama import BUILD, resources, speech
 from vollama.chat.session import Attachments, ChatSession
 from vollama.config import presets
-from vollama.config.settings import compatible, settings
+from vollama.config.settings import settings
+from vollama.config.store import settings_path
 from vollama.errors import VOLlamaError
 from vollama.rag import documents
-from vollama.speech import create as create_speech
 from vollama.tools import shell
 from vollama.tools.workspace import working_dir
 from vollama.ui import transcript, update
@@ -37,13 +37,22 @@ from vollama.ui.errors import show_error, show_info
 from vollama.ui.preset_manager import PresetManager
 from vollama.ui.speech_dialog import SpeechDialog
 
-DOCUMENT_FILTER = documents.wildcard("Supported Files", documents.DOCUMENT_EXTENSIONS)
-IMAGE_FILTER = documents.wildcard("Image files", documents.IMAGE_EXTENSIONS)
+
+def wildcard(label, extensions):
+    """A wx file-dialog filter built from a list of extensions."""
+    patterns = ";".join(f"*{extension}" for extension in extensions)
+    return f"{label} ({patterns})|{patterns}"
+
+
+DOCUMENT_FILTER = wildcard("Supported Files", documents.DOCUMENT_EXTENSIONS)
+IMAGE_FILTER = wildcard("Image files", documents.IMAGE_EXTENSIONS)
+CHAT_FILTER = wildcard("Saved chats", (".json",))
 
 INCOMPATIBLE_SETTINGS = (
-    "Your settings were written by a different version of VOLlama and cannot be "
-    "read. Choose Reset Settings in the Chat menu and restart the app. Your old "
-    "settings file is still on disk if you need to copy an API key out of it."
+    "Your settings could not be read: they were written by a different version "
+    "of VOLlama, or the file is damaged. Nothing will be saved over them, so "
+    "your old settings file stays on disk if you need to copy an API key out of "
+    "it. Choose Reset Settings in the Chat menu and restart the app."
 )
 
 
@@ -84,10 +93,10 @@ class PromptBox(wx.TextCtrl):
 
 
 class ChatWindow(wx.Frame):
-    def __init__(self, parent, title):
+    def __init__(self, parent, title, settings_readable=True):
         super().__init__(parent, title=title, size=(1920, 1080))
-        self.speech = create_speech(settings.screenreader)
-        if settings.speakResponse:
+        self.speech = speech.create(settings.screenreader)
+        if settings.speak_response:
             self.speech.speak("VOLlama is starting...")
 
         self.session = ChatSession(self._system_prompt())
@@ -105,7 +114,7 @@ class ChatWindow(wx.Frame):
         self._update_preset_label()
 
         threading.Thread(target=update.check, args=(BUILD,), daemon=True).start()
-        if not compatible:
+        if not settings_readable:
             show_error(VOLlamaError(INCOMPATIBLE_SETTINGS), "Settings")
         elif not settings.presets:
             self.on_manage_presets(None)
@@ -117,7 +126,7 @@ class ChatWindow(wx.Frame):
         menus = wx.MenuBar()
         menus.Append(self._chat_menu(), "&Chat")
         menus.Append(self._edit_menu(), "&Edit")
-        menus.Append(self._rag_menu(), "&Rag")
+        menus.Append(self._documents_menu(), "&Documents")
         self.SetMenuBar(menus)
         self._build_toolbar()
         self._build_panel()
@@ -156,7 +165,7 @@ class ChatWindow(wx.Frame):
         )
         self._show_workdir()
         self.speak_item = self._check(
-            menu, "Read Response", settings.speakResponse, self.on_toggle_speak
+            menu, "Read Response", settings.speak_response, self.on_toggle_speak
         )
         self.sound_item = self._check(
             menu, "Play Sound", settings.sound, self.on_toggle_sound
@@ -192,7 +201,7 @@ class ChatWindow(wx.Frame):
         )
         return menu
 
-    def _rag_menu(self):
+    def _documents_menu(self):
         menu = wx.Menu()
         self._item(menu, "Index &URL...", handler=self.on_index_url)
         self._item(menu, "Index &File...\tCTRL+F", handler=self.on_index_files)
@@ -404,13 +413,13 @@ class ChatWindow(wx.Frame):
 
     def on_open(self, event):
         with wx.FileDialog(
-            self, "Open", wildcard="*.json", style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST
+            self, "Open", wildcard=CHAT_FILTER, style=wx.FD_OPEN | wx.FD_FILE_MUST_EXIST
         ) as dialog:
             if dialog.ShowModal() == wx.ID_CANCEL:
                 return
             path = dialog.GetPath()
         try:
-            with codecs.open(path, "r", "utf-8") as file:
+            with open(path, encoding="utf-8") as file:
                 self.session.conversation.load_json(json.load(file))
         except (OSError, ValueError, KeyError) as e:
             show_error(VOLlamaError(f"Could not open {path}: {e}"))
@@ -422,14 +431,14 @@ class ChatWindow(wx.Frame):
             self,
             "Save",
             defaultFile=transcript.assistant_name() + ".json",
-            wildcard="*.json",
+            wildcard=CHAT_FILTER,
             style=wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT,
         ) as dialog:
             if dialog.ShowModal() == wx.ID_CANCEL:
                 return
             path = dialog.GetPath()
         try:
-            with codecs.open(path, "w", "utf-8") as file:
+            with open(path, "w", encoding="utf-8") as file:
                 json.dump(self.session.conversation.to_json(), file, indent="\t")
         except OSError as e:
             show_error(VOLlamaError(f"Could not save {path}: {e}"))
@@ -439,26 +448,24 @@ class ChatWindow(wx.Frame):
     def on_attach_image(self, event):
         paths = self._choose_files("Choose an image", IMAGE_FILTER)
         if paths:
-            self.attachments = Attachments(
-                images=paths, files=self.attachments.files, url=self.attachments.url
-            )
+            self._attach(images=tuple(paths))
         self.prompt.SetFocus()
 
     def on_attach_document(self, event):
         paths = self._choose_files("Choose a file", DOCUMENT_FILTER)
         if paths:
-            self.attachments = Attachments(
-                images=self.attachments.images, files=paths, url=self.attachments.url
-            )
+            self._attach(files=tuple(paths))
         self.prompt.SetFocus()
 
     def on_attach_url(self, event):
         url = self._ask_url("Enter an url to retrieve:")
         if url:
-            self.attachments = Attachments(
-                images=self.attachments.images, files=self.attachments.files, url=url
-            )
+            self._attach(url=url)
         self.prompt.SetFocus()
+
+    def _attach(self, **kind):
+        """Add one kind of attachment, keeping whatever else is already on."""
+        self.attachments = dataclasses.replace(self.attachments, **kind)
 
     def _choose_files(self, title, wildcard):
         with wx.FileDialog(
@@ -501,7 +508,7 @@ class ChatWindow(wx.Frame):
             chunks = self.session.build_index(source, self._progress)
             message = f"Indexed {source} into {chunks} chunks."
             wx.CallAfter(self.set_status, message)
-            show_info("Index", message)
+            show_info(message, "Index")
 
         self._in_background(run)
 
@@ -532,7 +539,7 @@ class ChatWindow(wx.Frame):
             else "Nothing has been indexed yet."
         )
         self.set_status(message)
-        show_info("Index", message)
+        show_info(message, "Index")
         self.focus_prompt()
 
     def _choose_folder(self, title, start=""):
@@ -562,7 +569,7 @@ class ChatWindow(wx.Frame):
         settings.save()
 
     def on_toggle_speak(self, event):
-        settings.speakResponse = self.speak_item.IsChecked()
+        settings.speak_response = self.speak_item.IsChecked()
         settings.save()
 
     def on_toggle_sound(self, event):
@@ -572,7 +579,7 @@ class ChatWindow(wx.Frame):
     def on_toggle_screen_reader(self, event):
         settings.screenreader = self.screenreader_item.IsChecked()
         settings.save()
-        self.speech = create_speech(settings.screenreader)
+        self.speech = speech.create(settings.screenreader)
         self.view.speech = self.speech
 
     def on_change_workdir(self, event):
@@ -596,19 +603,16 @@ class ChatWindow(wx.Frame):
         voices = self.speech.voices()
         if not voices:
             show_info(
-                "Voice",
                 "Speech is coming from your screen reader, so its voice and "
                 "rate are set there rather than here.",
+                "Voice",
             )
             return
         with SpeechDialog(self, voices, self.speech.voice, self.speech.rate) as dialog:
             if dialog.ShowModal() != wx.ID_OK:
                 return
             voice, rate = dialog.choice()
-        if voice:
-            self.speech.voice = voice
-        if rate is not None:
-            self.speech.rate = rate
+        speech.remember(self.speech, voice, rate)
 
     def on_reset_settings(self, event):
         with wx.MessageDialog(
@@ -621,8 +625,6 @@ class ChatWindow(wx.Frame):
             dialog.SetYesNoLabels("Reset and Quit", "Cancel")
             if dialog.ShowModal() != wx.ID_YES:
                 return
-        from vollama.config.store import settings_path
-
         path = settings_path()
         try:
             if path.exists():

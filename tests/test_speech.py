@@ -5,6 +5,7 @@ platform only. What is testable is the arrangement — how voices are grouped an
 labelled — which is the part that was wrong.
 """
 
+from vollama import speech
 from vollama.speech import Voice, described, group
 
 # What macOS actually reports, identifier and VoiceName both, for a machine with
@@ -129,3 +130,59 @@ def test_a_sapi_description_with_an_empty_half_is_not_split():
     """Otherwise a voice ends up named "" and shows as a blank menu item."""
     assert described("Microsoft David - ").name == "Microsoft David - "
     assert described(" - English").name == " - English"
+
+
+# ------------------------------------------------------- the stored preference
+
+
+class FakeBackend:
+    """A backend as `speech` drives one: a voice, a rate, and nothing else."""
+
+    def __init__(self):
+        self.voice = ""
+        self.rate = 0.0
+
+    def speak(self, text):
+        pass
+
+    def stop(self):
+        pass
+
+    def voices(self):
+        return []
+
+
+def test_the_stored_voice_and_rate_are_applied_once(isolated, monkeypatch):
+    isolated.voice = "Microsoft Zira Desktop - English (United States)"
+    isolated.rate = 2.0
+    monkeypatch.setattr(speech, "_backend", lambda use_screen_reader: FakeBackend())
+
+    backend = speech.create(False)
+
+    assert backend.voice == isolated.voice
+    assert backend.rate == 2.0
+
+
+def test_nothing_stored_leaves_the_platform_its_own_default(isolated, monkeypatch):
+    monkeypatch.setattr(speech, "_backend", lambda use_screen_reader: FakeBackend())
+    assert speech.create(False).voice == ""
+
+
+def test_a_chosen_voice_is_applied_and_kept_in_one_place(isolated):
+    """The backends used to do this themselves, and did not agree on how."""
+    backend = FakeBackend()
+
+    speech.remember(backend, "Some Voice", 1.5)
+
+    assert (backend.voice, backend.rate) == ("Some Voice", 1.5)
+    assert (isolated.voice, isolated.rate) == ("Some Voice", 1.5)
+
+
+def test_a_rate_that_was_not_a_number_changes_nothing():
+    """`SpeechDialog.choice` answers None for a rate it could not read."""
+    backend = FakeBackend()
+    backend.rate = 3.0
+
+    speech.remember(backend, "", None)
+
+    assert backend.rate == 3.0

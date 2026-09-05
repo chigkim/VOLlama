@@ -203,7 +203,7 @@ def test_saving_does_not_hand_out_the_live_message_kwargs():
     conversation = Conversation()
     conversation.add_tool_result("c1", "run", "output")
     saved = conversation.to_json()
-    saved[0]["additional_kwargs"]["tool_call_id"] = "changed"
+    saved[0]["extra"]["tool_call_id"] = "changed"
     assert conversation.messages[0].extra["tool_call_id"] == "c1"
 
 

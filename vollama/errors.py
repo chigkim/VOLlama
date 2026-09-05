@@ -16,7 +16,19 @@ class VOLlamaError(Exception):
 
 
 class ConfigError(VOLlamaError):
-    """Configuration is missing or will not do what was asked of it."""
+    """Configuration is missing or will not do what was asked of it.
+
+    `field` names the setting at fault, when one field is. The rule belongs to
+    the domain and the mapping from a field to a control belongs to the editor,
+    so a name is the narrowest thing that lets each keep its own knowledge: the
+    preset dialog puts the focus where the error is fixed without reading the
+    sentence to work out which field it means. It is a field *name*, never its
+    value, so nothing an error carries can leak an api key.
+    """
+
+    def __init__(self, message, field=""):
+        super().__init__(message)
+        self.field = field
 
 
 class DocumentError(VOLlamaError):

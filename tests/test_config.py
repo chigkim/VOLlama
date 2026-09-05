@@ -8,6 +8,7 @@ import stat
 import pytest
 
 from vollama.config import parameters, presets, prompts, store
+from vollama.config import settings as settings_module
 from vollama.config.presets import Preset
 from vollama.config.prompts import Prompt, PromptLibrary
 from vollama.config.settings import SETTINGS_VERSION, Settings
@@ -72,6 +73,32 @@ def test_an_unparseable_file_is_reported(tmp_path):
         store.read(path)
 
 
+def test_loading_a_missing_file_writes_a_fresh_one(isolated):
+    assert not store.settings_path().exists()  # the fixture saves nothing
+    assert settings_module.load() is True
+    assert isolated.writable is True
+    assert store.settings_path().exists()
+
+
+def test_a_file_from_another_version_is_refused_and_left_alone(isolated):
+    """The user is told to reset, and their api keys stay where they are."""
+    path = store.settings_path()
+    path.write_text(
+        json.dumps({"version": SETTINGS_VERSION + 1, "presets": {"one": {}}}),
+        encoding="utf-8",
+    )
+
+    assert settings_module.load() is False
+    assert isolated.presets == {}
+    assert isolated.writable is False
+
+    # And one menu toggle cannot save the defaults over it, which is what the
+    # message shown to the user promises.
+    isolated.sound = False
+    isolated.save()
+    assert json.loads(path.read_text(encoding="utf-8"))["presets"] == {"one": {}}
+
+
 def test_unknown_and_missing_fields_take_defaults():
     loaded = Settings.from_dict({"tools": True, "invented_by_a_newer_build": 1})
     assert loaded.tools is True
@@ -83,37 +110,52 @@ def test_unknown_and_missing_fields_take_defaults():
 
 
 def test_options_leaves_out_what_was_not_set():
-    values = parameters.defaults()
-    values["temperature"]["value"] = 0.5
-    values["stop"]["value"] = []
-    assert parameters.options(values) == {"temperature": 0.5}
+    assert parameters.options({"temperature": 0.5, "stop": [], "top_p": None}) == {
+        "temperature": 0.5
+    }
 
 
-def test_reconcile_adds_new_parameters_and_drops_removed_ones():
-    values = {"temperature": {"value": 0.5}, "gone": {"value": 1}}
-    parameters.reconcile(values)
-    assert values["temperature"]["value"] == 0.5
-    assert "gone" not in values
-    assert set(values) == set(parameters.SCHEMA)
+def test_options_keeps_a_value_of_zero():
+    """A temperature of 0 is a choice, and the falsiest one there is."""
+    assert parameters.options({"temperature": 0.0}) == {"temperature": 0.0}
 
 
 @pytest.mark.parametrize(
-    "key, text, previous, expected",
+    "key, text, expected",
     [
-        ("temperature", "", None, None),
-        ("temperature", " 0.7 ", None, 0.7),
-        ("seed", "42", None, 42),
-        ("stop", "a, b ,", [], ["a", "b"]),
-        ("reasoning_effort", "high", None, "high"),
+        ("temperature", "", None),
+        ("temperature", " 0.7 ", 0.7),
+        ("seed", "42", 42),
+        ("stop", "a, b ,", ["a", "b"]),
+        ("reasoning_effort", "high", "high"),
     ],
 )
-def test_parse_value(key, text, previous, expected):
-    assert parameters.parse_value(key, text, previous) == expected
+def test_parse(key, text, expected):
+    assert parameters.parse(key, text) == expected
 
 
-def test_parse_value_rejects_a_number_that_is_not_one():
+def test_parse_rejects_a_number_that_is_not_one():
     with pytest.raises(ValueError):
-        parameters.parse_value("seed", "soon", None)
+        parameters.parse("seed", "soon")
+
+
+def test_checked_keeps_what_the_schema_knows_and_drops_the_rest():
+    kept = parameters.checked(
+        {
+            "temperature": 0.5,
+            "max_tokens": 100,
+            "stop": ["END"],
+            "gone": 1,  # a parameter this build does not have
+            "seed": "soon",  # not the kind of value seed takes
+            "top_p": {"value": 0.9},  # the shape an older build stored
+        }
+    )
+    assert kept == {"temperature": 0.5, "max_tokens": 100, "stop": ["END"]}
+
+
+def test_checked_takes_a_whole_number_as_a_decimal():
+    """A temperature typed as 1 in the file is a temperature of 1."""
+    assert parameters.checked({"temperature": 1}) == {"temperature": 1}
 
 
 # --------------------------------------------------------------------- presets
@@ -133,58 +175,33 @@ def test_a_preset_needs_a_base_url_and_a_model():
         Preset(base_url="http://localhost/v1/").validate()
 
 
-def test_create_stores_activates_and_refuses_a_taken_name():
-    presets.create("one", usable())
-    assert presets.names() == ["one"]
-    assert presets.active_name() == "one"
-    with pytest.raises(ConfigError, match="already exists"):
-        presets.create("one", usable())
+def test_the_error_names_the_field_that_is_wrong():
+    """Which is how the editor puts the focus where the fix is."""
+    with pytest.raises(ConfigError) as refused:
+        Preset(model="m").validate()
+    assert refused.value.field == "base_url"
+    with pytest.raises(ConfigError) as refused:
+        Preset(base_url="http://localhost/v1/").validate()
+    assert refused.value.field == "model"
 
 
-def test_create_refuses_a_blank_name():
-    with pytest.raises(ConfigError):
-        presets.create("   ", usable())
-
-
-def test_update_renames_in_place():
-    presets.create("one", usable())
-    presets.update("one", "two", usable(model="other"))
-    assert presets.names() == ["two"]
-    assert presets.get("two").model == "other"
-    assert presets.active_name() == "two"
-
-
-def test_update_refuses_to_rename_over_another_preset():
-    presets.create("one", usable())
-    presets.create("two", usable())
-    with pytest.raises(ConfigError, match="already exists"):
-        presets.update("two", "one", usable())
-    assert presets.names() == ["one", "two"]
-
-
-def test_deleting_the_active_preset_promotes_the_first_of_the_rest():
-    presets.create("b", usable())
-    presets.create("a", usable())
-    presets.delete("a")
+def test_replace_stores_the_list_and_activates_the_named_one():
+    presets.replace([("a", usable(model="one")), ("b", usable(model="two"))], "b")
+    assert presets.names() == ["a", "b"]
     assert presets.active_name() == "b"
-    presets.delete("b")
-    assert presets.active_name() == ""
-    assert presets.active() is None
+    assert presets.get("b").model == "two"
 
 
-def test_replace_writes_the_whole_list_and_chooses_the_active_one():
-    presets.create("a", usable(model="one"))
-    presets.create("b", usable(model="two"))
-    presets.replace([("b", usable(model="two")), ("c", usable(model="three"))], "c")
-    assert presets.names() == ["b", "c"]
-    assert presets.active_name() == "c"
-    assert presets.get("c").model == "three"
+def test_replace_deletes_what_is_no_longer_in_the_list():
+    presets.replace([("a", usable()), ("b", usable())], "a")
+    presets.replace([("b", usable(model="two"))], "b")
+    assert presets.names() == ["b"]
+    assert presets.active_name() == "b"
 
 
 def test_replace_lets_two_presets_swap_names():
-    """The rename that `update` cannot do, because each clashes with the other."""
-    presets.create("a", usable(model="one"))
-    presets.create("b", usable(model="two"))
+    """One write, rather than a rename that has to dodge the other."""
+    presets.replace([("a", usable(model="one")), ("b", usable(model="two"))], "a")
     presets.replace([("b", usable(model="one")), ("a", usable(model="two"))], "a")
     assert presets.get("a").model == "two"
     assert presets.get("b").model == "one"
@@ -206,26 +223,83 @@ def test_replace_falls_back_to_the_first_preset_and_to_none():
 
 
 def test_an_active_name_that_no_longer_exists_is_corrected(isolated):
-    presets.create("one", usable())
+    presets.replace([("one", usable())], "one")
     isolated.active_preset = "deleted"
     assert presets.active_name() == "one"
 
 
-def test_require_active_says_where_to_fix_it():
+def test_require_active_says_where_to_fix_it_and_which_field_it_is():
     with pytest.raises(ConfigError, match=r"control\+p"):
         presets.require_active()
-    presets.create("one", Preset(base_url="http://localhost/v1/"))
-    with pytest.raises(ConfigError, match=r"control\+p"):
+    presets.replace([("one", Preset(base_url="http://localhost/v1/"))], "one")
+    with pytest.raises(ConfigError) as refused:
         presets.require_active()
+    assert "control+p" in str(refused.value)
+    assert refused.value.field == "model"
 
 
 def test_a_preset_survives_being_written_and_read(isolated):
-    presets.create("one", usable(api_key="k", system="be brief", context_window=4096))
+    presets.replace(
+        [
+            (
+                "one",
+                usable(
+                    api_key="k",
+                    system="be brief",
+                    context_window=4096,
+                    parameters={"temperature": 0.5, "stop": ["END"]},
+                ),
+            )
+        ],
+        "one",
+    )
     store.write(store.settings_path(), isolated.to_dict())
     saved = json.loads(store.settings_path().read_text(encoding="utf-8"))
     back = Preset.from_dict(store.read(store.settings_path())["presets"]["one"])
     assert back == presets.get("one")
+    assert back.parameters == {"temperature": 0.5, "stop": ["END"]}
     assert saved["presets"]["one"]["api_key"] != "k"
+
+
+def test_the_stored_preset_holds_values_and_not_the_parameter_schema():
+    """The description and the range of a parameter are the program's, not data."""
+    stored = usable(parameters={"temperature": 0.5}).to_dict()
+    assert stored["parameters"] == {"temperature": 0.5}
+
+
+def test_a_preset_whose_parameters_are_the_old_shape_loads_without_them(isolated):
+    """The rest of it survives, which is why the file version is not bumped.
+
+    A build before this one wrote the whole parameter schema into every preset,
+    so the value of a parameter is a dict where a number belongs. The value is
+    dropped and the server decides, which is what an unset parameter has always
+    meant; the base URL, model and api key — the parts nobody can retype from
+    memory — are kept.
+    """
+    back = Preset.from_dict(
+        {
+            "base_url": "http://localhost/v1/",
+            "model": "m",
+            "api_key": "k",
+            "parameters": {
+                "temperature": {"value": 0.7, "description": "...", "range": "0.0-2.0"}
+            },
+        }
+    )
+    assert (back.base_url, back.model, back.api_key) == (
+        "http://localhost/v1/",
+        "m",
+        "k",
+    )
+    assert back.parameters == {}
+
+
+def test_a_hand_edited_field_that_is_not_a_number_takes_the_default():
+    back = Preset.from_dict(
+        {"base_url": "u", "model": "m", "context_window": "lots", "chunk_size": 0}
+    )
+    assert back.context_window == presets.DEFAULT_CONTEXT_WINDOW
+    assert back.chunk_size == Preset().chunk_size
 
 
 def test_a_preset_written_before_the_retrieval_fields_takes_their_defaults():
@@ -243,8 +317,13 @@ def test_a_preset_written_before_the_retrieval_fields_takes_their_defaults():
 
 def test_the_retrieval_settings_are_read_from_the_active_preset(isolated):
     """Which is what switching preset switches, embedding endpoint included."""
-    presets.create("local", usable(embedding_base_url="http://one/v1/"))
-    presets.create("hosted", usable(embedding_base_url="http://two/v1/"))
+    presets.replace(
+        [
+            ("local", usable(embedding_base_url="http://one/v1/")),
+            ("hosted", usable(embedding_base_url="http://two/v1/")),
+        ],
+        "local",
+    )
 
     presets.activate("local")
     assert presets.retrieval().embedding_base_url == "http://one/v1/"

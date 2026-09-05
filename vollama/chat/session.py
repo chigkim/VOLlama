@@ -15,16 +15,15 @@ this is a dialog, a status line or a test failure.
 import itertools
 import logging
 import time
+from dataclasses import dataclass
 
 from vollama.chat import client, compaction, streaming, toolset
 from vollama.chat.conversation import BACKGROUND, Conversation
 from vollama.chat.message import Message, image_url
 from vollama.chat.view import NullView, TurnStats
 from vollama.config import presets
-from vollama.config.settings import settings
 from vollama.errors import DocumentError
-from vollama.rag import documents
-from vollama.rag import search
+from vollama.rag import documents, search
 from vollama.rag.index import RagIndex, describe_sources
 from vollama.tools import registry
 from vollama.tools.shell import cancellation, jobs
@@ -48,20 +47,20 @@ TOO_MUCH = (
 DOCUMENT_SEPARATOR = "\n---\n"
 
 
+@dataclass(frozen=True)
 class Attachments:
     """What was attached to a message before it was sent.
 
-    Immutable and passed in, rather than fields on the session poked by the UI
+    Frozen and passed in, rather than fields on the session poked by the UI
     beforehand: a turn should be able to say what it was given by looking at its
-    own arguments.
+    own arguments. The window adds one kind at a time with
+    `dataclasses.replace`, which is why this is a dataclass and not a class with
+    three keyword arguments the caller has to repeat.
     """
 
-    __slots__ = ("images", "files", "url")
-
-    def __init__(self, images=(), files=(), url=""):
-        self.images = tuple(images)
-        self.files = tuple(files)
-        self.url = url or ""
+    images: tuple = ()
+    files: tuple = ()
+    url: str = ""
 
     def __bool__(self):
         return bool(self.images or self.files or self.url)
@@ -201,11 +200,11 @@ class ChatSession:
             result = "Not run: the user stopped generation."
         view.tool_result(result)
         self.conversation.add_tool_result(call["id"], name, result)
-        if name == search.NAME and allowed and settings.show_context:
-            # The same thing Show Context shows after a /q turn: what was
-            # retrieved and how close it was. A search the model asked for is
-            # the one the user has least other way of seeing.
-            view.notice(describe_sources(self.index.sources()))
+        if name == search.NAME and allowed:
+            # What a search the model asked for was answered from, which is the
+            # retrieval the user has least other way of seeing. Whether it is
+            # printed is the view's to decide.
+            view.sources(describe_sources(self.index.sources()))
 
     def _stream(self, response, view, started):
         """Consume one streamed reply.
@@ -268,7 +267,7 @@ class ChatSession:
     def _send(self, llm, preset, view):
         """Make the request, compacting and trying once more if it will not fit."""
         try:
-            return self._start(llm, self.conversation.outgoing(_environment()))
+            return self._start(llm, self.conversation.outgoing(toolset.environment()))
         except Exception as refusal:
             if not compaction.overflowed(refusal):
                 raise
@@ -287,7 +286,7 @@ class ChatSession:
                 raise refusal from None
             if not compacted:
                 raise
-            return self._start(llm, self.conversation.outgoing(_environment()))
+            return self._start(llm, self.conversation.outgoing(toolset.environment()))
 
     def _start(self, llm, messages):
         """Send the request and pull the first chunk.
@@ -467,7 +466,10 @@ class ChatSession:
         every later message would fill the window with them.
         """
         if not self.index or not self.index.ready():
-            raise RuntimeError("No index found. Index something first.")
+            raise DocumentError(
+                "Nothing has been indexed yet, so there is nothing to answer "
+                "from. Index a document or load an index first."
+            )
         view.status("Processing with RAG...")
         # The clock starts at retrieval, which is part of what the user waited
         # for, and before the size check so a refusal is still timed.
@@ -487,8 +489,7 @@ class ChatSession:
                 else ""
             )
             view.notice("The model answered nothing." + size + " " + TOO_MUCH)
-        if settings.show_context:
-            view.notice(describe_sources(self.index.sources()))
+        view.sources(describe_sources(self.index.sources()))
 
     @staticmethod
     def _check_fits(prompt, preset):
@@ -511,11 +512,6 @@ class ChatSession:
 
 def _name(call):
     return call["function"]["name"]
-
-
-def _environment():
-    """What to tell the model about this machine, when it can act on it."""
-    return registry.environment() if client.tools_enabled() else None
 
 
 def _image(path):
