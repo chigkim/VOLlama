@@ -210,47 +210,21 @@ def test_a_tool_call_is_run_and_its_result_sent_back(build, ran):
     assert any(m.role == "tool" for m in client.requests[1])
 
 
-def test_the_round_budget_ends_the_turn(build, ran, monkeypatch):
-    monkeypatch.setattr("vollama.tools.registry.MAX_TOOL_ROUNDS", 2)
-    asking = [stream("", [fakes.call("run", "{}")]) for _ in range(3)]
-    build(*asking)
+def test_a_turn_runs_as_many_tools_as_the_model_asks_for(build, ran):
+    """No round budget and no ceiling: only the model ends a working turn.
+
+    Twenty-five rounds is more than either of the counters this replaced would
+    have allowed (ten rounds, forty calls), and none of them is a free call
+    that used to dodge the budget.
+    """
+    asking = [stream("", [fakes.call("run", "{}")]) for _ in range(25)]
+    build(*asking, stream("finished"))
     session = ChatSession()
 
     session.ask("keep going", fakes.RecordingView())
 
-    assert len(ran) == 2
-    # The call that was refused still got a tool message: a dangling call makes
-    # the whole history unusable to the server.
-    results = [m for m in session.conversation.messages if m.role == "tool"]
-    assert len(results) == 3
-    assert "Not run" in results[-1].content
-
-
-def test_reads_and_polls_do_not_spend_a_round(build, ran, monkeypatch):
-    monkeypatch.setattr("vollama.tools.registry.MAX_TOOL_ROUNDS", 1)
-    build(
-        stream("", [fakes.call("read", '{"path": "a"}')]),
-        stream("", [fakes.call("poll", "{}")]),
-        stream("", [fakes.call("run", "{}")]),
-        stream("finished"),
-    )
-    session = ChatSession()
-
-    session.ask("look around", fakes.RecordingView())
-
-    assert [name for name, _ in ran] == ["read", "poll", "run"]
+    assert len(ran) == 25
     assert session.conversation.messages[-1].content == "finished"
-
-
-def test_the_call_ceiling_stops_a_model_that_only_ever_reads(build, ran, monkeypatch):
-    monkeypatch.setattr("vollama.tools.registry.MAX_TOOL_CALLS", 3)
-    reading = [stream("", [fakes.call("read", '{"path": "a"}')]) for _ in range(4)]
-    build(*reading)
-    session = ChatSession()
-
-    session.ask("read everything", fakes.RecordingView())
-
-    assert len(ran) == 3
 
 
 def test_stopping_mid_turn_still_answers_every_call(build, ran):

@@ -3,7 +3,7 @@
 `ChatSession.ask` is the single path a message takes, whatever started it. It
 sends the conversation, streams the reply, runs whatever tools the model asked
 for, sends their results back, and does that until the model stops asking or
-one of the budgets runs out. Around it sit the three things that keep a long
+the user stops it. Around it sit the three things that keep a long
 chat working: compaction when the window fills, a retry when the server refuses
 the history as too long, and a retry when a reply comes back cut short.
 
@@ -204,10 +204,22 @@ class ChatSession:
         self.finish_reason = ""
 
     def _converse(self, llm, preset, view):
-        """Stream replies and run tools until the model has nothing more to ask."""
+        """Stream replies and run tools until the model has nothing more to ask.
+
+        There is no round budget and no ceiling on calls. A turn ends when the
+        model stops asking for tools, when the user presses Escape, or when the
+        server refuses the history -- and nothing else. The two counters that
+        used to end it (ten rounds, forty calls) ended the turns that were
+        working: a model part-way through a refactor was cut off with the files
+        half written, and its only recovery was for the user to notice and say
+        "carry on". Usage compaction does not run mid-turn, so a long turn is
+        the one place the window can fill with nothing watching it; what stops
+        it there is the server refusing, which `_send` compacts and retries.
+
+        The brake is Escape, and it is a real one: `self.generating` is checked
+        before every tool call and before every request.
+        """
         response, started = self._send(llm, preset, view)
-        rounds = 0
-        calls = 0
         retried = False
         while True:
             text, reasoning, tool_calls = self._stream(response, view, started)
@@ -221,40 +233,27 @@ class ChatSession:
             # A dangling tool call the server never sees an answer for makes the
             # whole history unusable, so every call gets a tool message even when
             # we are not going to run it.
-            allowed = (
-                self.generating
-                and rounds < registry.MAX_TOOL_ROUNDS
-                and calls < registry.MAX_TOOL_CALLS
-            )
-            calls += len(tool_calls)
+            running = self.generating
             for call in tool_calls:
-                self._run_tool(call, view, allowed)
-            if not allowed:
+                self._run_tool(call, view, running)
+            if not running:
                 return
-            # Polls and reads only look at work already there, so they do not
-            # spend the budget: waiting for a build would otherwise use it all.
-            if any(
-                not registry.is_free(_name(call), self.tools) for call in tool_calls
-            ):
-                rounds += 1
             view.status("Processing...")
             response, started = self._send(llm, preset, view)
 
-    def _run_tool(self, call, view, allowed):
+    def _run_tool(self, call, view, running):
         """Run one tool call, report it, and record its result as a message."""
         name = _name(call)
         arguments = call["function"]["arguments"]
         view.tool_called(registry.describe(name, arguments, self.tools))
-        if allowed:
+        if running:
             view.status(f"Running {name}...")
             result = registry.call(name, arguments, self.tools)
-        elif self.generating:
-            result = "Not run: the limit on tool calls in one message was reached."
         else:
             result = "Not run: the user stopped generation."
         view.tool_result(result)
         self.conversation.add_tool_result(call["id"], name, result)
-        if name == search.NAME and allowed:
+        if name == search.NAME and running:
             # What a search the model asked for was answered from, which is the
             # retrieval the user has least other way of seeing. Whether it is
             # printed is the view's to decide.
@@ -440,7 +439,7 @@ class ChatSession:
 
         So: what the last request cost, which the server measured, plus what has
         been added since and will go out again. That is the final message of the
-        turn -- the reply, or a tool result when the round budget ran out --
+        turn -- the reply, or a tool result from a turn the user stopped --
         counted locally, since the server has not seen it yet.
         """
         if not self.usage:

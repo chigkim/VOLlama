@@ -3,9 +3,9 @@
 Five, plus whatever the session hands in as `extra`: search exists only while
 an index is loaded, and an index lives above this layer. See `chat.toolset`.
 
-A `Tool` pairs the OpenAI function schema the model reads with the three things
-the application needs alongside it: what to run, how to say what was run in one
-line of transcript, and whether the call counts against the turn's budget.
+A `Tool` pairs the OpenAI function schema the model reads with the two things
+the application needs alongside it: what to run, and how to say what was run in
+one line of transcript.
 Before this the registry was a dictionary of functions plus a set of names plus
 a `describe` that asked which module a tool had come from; now a tool that is
 added is added in one place, and nothing has to be told about it twice.
@@ -31,16 +31,6 @@ from typing import Callable
 from vollama.tools import files, shell
 from vollama.tools.workspace import working_dir
 
-# How many times in a row the model may call a tool before the turn ends.
-# Free calls do not count: waiting on a build, or reading the files it is about
-# to change, is not the kind of progress the budget exists to limit.
-MAX_TOOL_ROUNDS = 10
-
-# A ceiling on calls of any kind in one turn, free ones included. Without it a
-# model that only ever reads never spends a round and the turn never ends.
-MAX_TOOL_CALLS = 40
-
-
 @dataclass(frozen=True)
 class Tool:
     """One tool: what the model is told, what runs, and what the user sees."""
@@ -48,7 +38,6 @@ class Tool:
     schema: dict
     run: Callable[..., str]
     summarize: Callable[[dict], str]
-    free: bool = False
 
     @property
     def name(self):
@@ -57,8 +46,8 @@ class Tool:
 
 REGISTRY = (
     Tool(shell.RUN_TOOL, shell.run, shell.summarize_run),
-    Tool(shell.POLL_TOOL, shell.poll, shell.summarize_poll, free=True),
-    Tool(files.READ_TOOL, files.read, files.summarize_read, free=True),
+    Tool(shell.POLL_TOOL, shell.poll, shell.summarize_poll),
+    Tool(files.READ_TOOL, files.read, files.summarize_read),
     Tool(files.WRITE_TOOL, files.write, files.summarize_write),
     Tool(files.EDIT_TOOL, files.edit, files.summarize_edit),
 )
@@ -78,12 +67,6 @@ def find(name, extra=()):
         if tool.name == name:
             return tool
     return BY_NAME.get(name)
-
-
-def is_free(name, extra=()):
-    """Whether this call is one that does not spend a round."""
-    tool = find(name, extra)
-    return bool(tool and tool.free)
 
 
 def arguments_of(raw):

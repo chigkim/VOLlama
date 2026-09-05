@@ -3,8 +3,6 @@
 import inspect
 import json
 
-import pytest
-
 from vollama.tools import registry
 
 
@@ -25,12 +23,6 @@ def test_every_declared_parameter_is_one_the_function_takes():
         for name, parameter in takes.items():
             if parameter.default is inspect.Parameter.empty:
                 assert name in required, f"{tool.name}.{name}"
-
-
-def test_free_calls_are_the_ones_that_only_look():
-    free = [tool.name for tool in registry.REGISTRY if tool.free]
-    assert free == ["poll", "read"]
-    assert registry.is_free("poll") and not registry.is_free("run")
 
 
 def test_every_schema_is_shaped_the_way_the_api_wants():
@@ -79,8 +71,3 @@ def test_the_environment_tells_the_model_what_it_cannot_work_out(isolated, tmp_p
     assert str(tmp_path) in described
     assert "Shell running your command" in described
     assert "Python on PATH" in described
-
-
-@pytest.mark.parametrize("budget", [registry.MAX_TOOL_ROUNDS, registry.MAX_TOOL_CALLS])
-def test_the_budgets_are_positive(budget):
-    assert budget > 0

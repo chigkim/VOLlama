@@ -152,11 +152,6 @@ def test_the_machine_tools_stay_behind_the_checkbox(rag, isolated):
     assert toolset.for_turn(rag)[-1].name == search.NAME
 
 
-def test_searching_does_not_spend_a_round(rag):
-    """Like read: looking something up is not the progress the budget limits."""
-    assert registry.is_free(search.NAME, toolset.for_turn(rag))
-
-
 def test_an_index_with_nothing_in_it_offers_no_search(isolated):
     isolated.tools = False
     assert toolset.for_turn(RagIndex()) == []

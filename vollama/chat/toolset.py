@@ -47,17 +47,11 @@ def environment():
 
 
 def searching(index):
-    """The search tool over `index`.
-
-    Free, for the same reason `read` is: looking something up is not the kind
-    of progress the round budget exists to limit, and a search that spent a
-    round would leave a model nine turns to answer from what it found.
-    """
+    """The search tool over `index`."""
     return registry.Tool(
         schema=search.schema(index),
         run=functools.partial(search.run, index),
         summarize=search.summarize,
-        free=True,
     )
 
 
