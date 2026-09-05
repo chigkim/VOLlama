@@ -406,7 +406,7 @@ def test_a_job_that_ends_mid_turn_waits_for_the_turn_to_end(build, ran, monkeypa
     A note delivered mid-turn arrives in the middle of work the model is part
     way through, and what it does with it is start that work again: it re-ran
     tool calls it had already made in every run against a real server. The
-    ending keeps until the turn is over, where `collect_background` takes it.
+    ending keeps until the turn is over, where `resume` takes it.
     """
     looks = []
 
@@ -416,7 +416,12 @@ def test_a_job_that_ends_mid_turn_waits_for_the_turn_to_end(build, ran, monkeypa
         return "brave-otter finished." if len(looks) > 1 else ""
 
     monkeypatch.setattr("vollama.tools.shell.jobs.notes", notes)
-    build(stream("running it", tool_calls=[fakes.call("run", "{}")]), stream("all done"))
+    monkeypatch.setattr("vollama.tools.shell.jobs.notes_waiting", lambda: True)
+    build(
+        stream("running it", tool_calls=[fakes.call("run", "{}")]),
+        stream("all done"),
+        stream("noted, thanks"),
+    )
     session = ChatSession()
     view = fakes.RecordingView()
 
@@ -426,29 +431,14 @@ def test_a_job_that_ends_mid_turn_waits_for_the_turn_to_end(build, ran, monkeypa
     assert roles == ["user", "assistant", "tool", "assistant"]
     assert view.of("background") == []
 
-    # And then the window collects it, once there is no turn to interrupt.
-    session.collect_background(view)
+    # And then it starts a turn of its own, once there is none to interrupt.
+    session.resume(view)
 
-    note = session.conversation.messages[-1]
+    note = session.conversation.messages[-2]
     assert note.content == "brave-otter finished."
     assert note.extra["background"] is True
     assert view.of("background") == [("brave-otter finished.",)]
-
-
-def test_a_note_can_be_taken_into_the_history_without_sending(build, monkeypatch):
-    monkeypatch.setattr(
-        "vollama.tools.shell.jobs.notes", lambda: "brave-otter finished."
-    )
-    build()  # No stream prepared: a request here would fail the test.
-    session = ChatSession()
-    view = fakes.RecordingView()
-
-    session.collect_background(view)
-
-    assert [m.content for m in session.conversation.messages] == [
-        "brave-otter finished."
-    ]
-    assert view.of("background") == [("brave-otter finished.",)]
+    assert session.conversation.messages[-1].content == "noted, thanks"
 
 
 def _max(tokens):

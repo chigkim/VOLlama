@@ -166,15 +166,6 @@ class ChatWindow(wx.Frame):
             "does so without asking you first. Searching documents you have "
             "indexed is not covered by this and is always allowed.",
         )
-        self.resume_item = self._check(
-            menu,
-            "Continue After a Background Command",
-            settings.resume_after_background,
-            self.on_toggle_resume,
-            "When a command running in the background finishes, hand the "
-            "result to the model straight away instead of waiting for your "
-            "next message.",
-        )
         self.workdir_item = self._item(
             menu,
             "Workspace",
@@ -372,19 +363,18 @@ class ChatWindow(wx.Frame):
             self._flush_background()
 
     def _flush_background(self):
-        """Hand any finished job to the model, or just to the transcript.
+        """Hand a finished job to the model, in a turn of its own.
 
-        Both paths put the ending in the conversation and on screen; they differ
-        only in whether the model is asked to carry on from it.
+        There is no second way of doing this. A setting used to choose between
+        this and putting the note in the history without sending it, so that
+        the ending rode the user's next message -- which meant the app knew a
+        job had ended and sat on it, and the model was told about a build that
+        failed whenever the user next happened to type. What a background
+        command is *for* is being told when it is done.
         """
-        work = (
-            self.session.resume
-            if settings.resume_after_background
-            else self.session.collect_background
-        )
 
         def flush():
-            work(self.view)
+            self.session.resume(self.view)
             # The note is a message, so alt+up has one more to walk past.
             wx.CallAfter(self._sync_history)
 
@@ -621,10 +611,6 @@ class ChatWindow(wx.Frame):
         retrieval it describes.
         """
         settings.show_context = self.context_item.IsChecked()
-        settings.save()
-
-    def on_toggle_resume(self, event):
-        settings.resume_after_background = self.resume_item.IsChecked()
         settings.save()
 
     def on_toggle_tools(self, event):

@@ -112,30 +112,20 @@ class ChatSession:
         there is nothing here the model has not seen before — only the moment
         it is sent is new. Does nothing if there is no note, or if a turn is
         already running: two requests in one conversation is not a recovery.
+        Giving up rather than queueing loses nothing: the attempt does not
+        consume the note, so `notes_waiting()` stays true and the job sweeper
+        nudges again a few seconds later.
         """
         if not jobs.notes_waiting():
             return
         self._turn(self._resume_turn, view, wait=False)
-
-    def collect_background(self, view=None):
-        """Take what background commands said into the history, sending nothing.
-
-        What happens when a job ends and the model is not to be woken for it:
-        the note goes in as the message it would have gone in as anyway, so it
-        is on screen the moment it happens and rides the next request rather
-        than buying one of its own. Waits for any turn to finish rather than
-        adding a message to a conversation mid-request.
-        """
-        with self._turning:
-            self._report_background(view or NullView())
 
     def _turn(self, run, view, wait=True):
         """The wrapper every turn shares: a client, a stop flag, and rollback.
 
         `wait` is the difference between the two callers. A message the user
         typed queues behind whatever is running and is answered next; a turn a
-        background command asked for gives up instead, since the turn already
-        running will collect the same note itself before it ends.
+        background command asked for gives up instead, and is nudged again.
         """
         if not self._turning.acquire(blocking=wait):
             return
