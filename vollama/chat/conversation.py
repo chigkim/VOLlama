@@ -142,24 +142,45 @@ class Conversation:
         self.summary = ""
         self.summary_at = 0
 
+    def cuts(self):
+        """Every index the chat can be cut at without orphaning a tool result.
+
+        Two kinds of place, and no others. The user's own messages, which is
+        where a turn begins and so where nothing can be outstanding. And the end
+        of a completed tool round, which is the only boundary a turn that never
+        hands control back has at all — a long agentic run is one user message
+        and then rounds, so without these there is nowhere in it to cut. A round
+        is complete when every call made in it has its result behind it; cutting
+        anywhere else leaves the server a result whose call went into the
+        summary, which makes the whole history unusable.
+        """
+        found = []
+        pending = 0
+        for i, message in enumerate(self.messages):
+            if message.role == "tool":
+                pending = max(pending - 1, 0)
+                continue
+            starts_turn = message.role == "user"
+            ends_round = i > 0 and self.messages[i - 1].role == "tool"
+            if not pending and (starts_turn or ends_round):
+                found.append(i)
+            pending += len(message.extra.get("tool_calls", ()))
+        return found
+
     def halfway(self):
-        """A user-message boundary about midway to the end, or None.
+        """A boundary about midway to the end, or None.
 
         The overflow path cannot summarize everything at once: that request
         would carry the same history the server just refused. Halving it is the
-        cheapest thing that might fit. The cut lands on one of the user's own
-        messages, so a tool call is never separated from its result. None when
-        fewer than two remain, since the cut would then land in front of the
-        only one and summarize nothing.
+        cheapest thing that might fit. The cut lands on one of `cuts()`, so a
+        tool call is never separated from its result. None when fewer than two
+        remain, since the cut would then land in front of the only one and
+        summarize nothing.
         """
-        starts = [
-            i
-            for i, m in enumerate(self.messages)
-            if m.role == "user" and i > self.summary_at
-        ]
-        if len(starts) < 2:
+        found = [i for i in self.cuts() if i > self.summary_at]
+        if len(found) < 2:
             return None
-        return starts[len(starts) // 2]
+        return found[len(found) // 2]
 
     def compactable(self):
         """Whether there is enough here for a summary to save anything.

@@ -125,6 +125,38 @@ def test_halfway_gives_up_when_there_is_only_one_turn_left_to_cut():
     assert conversation.halfway() is None
 
 
+def test_halfway_can_cut_a_long_turn_at_the_end_of_a_tool_round():
+    """The only boundary an agentic run that never hands control back has.
+
+    One user message and then rounds, so counting the user's own messages finds
+    nowhere to cut and the overflow rescue dead-ends inside the turn.
+    """
+    conversation = Conversation()
+    conversation.add_user("do the work")
+    for _ in range(4):
+        tool_round(conversation, "", "output")
+
+    at = conversation.halfway()
+    assert at is not None
+    # The cut lands where a round has just finished: the last result behind it,
+    # the next call in front, so nothing left is waiting on the summary.
+    assert conversation.messages[at - 1].role == "tool"
+    assert conversation.messages[at].role == "assistant"
+
+
+def test_halfway_never_cuts_between_a_call_and_its_result():
+    conversation = Conversation()
+    conversation.add_user("do the work")
+    for _ in range(6):
+        tool_round(conversation, "", "output")
+
+    for at in conversation.cuts():
+        before = conversation.messages[:at]
+        calls = sum(len(m.extra.get("tool_calls", ())) for m in before)
+        results = sum(1 for m in before if m.role == "tool")
+        assert calls == results
+
+
 def test_one_enormous_message_is_not_worth_compacting():
     conversation = Conversation()
     conversation.add_user("a very long question")
