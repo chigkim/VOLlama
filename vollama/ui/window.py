@@ -31,7 +31,7 @@ from vollama.config.store import settings_path
 from vollama.errors import VOLlamaError
 from vollama.rag import documents
 from vollama.tools import shell
-from vollama.tools.workspace import working_dir
+from vollama.tools.workspace import ensure_working_dir, working_dir
 from vollama.ui import transcript, update
 from vollama.ui.errors import show_error, show_info
 from vollama.ui.preset_manager import PresetManager
@@ -112,6 +112,11 @@ class ChatWindow(wx.Frame):
         self.Show()
         self.prompt.SetFocus()
         self._update_preset_label()
+        # Tools left on from an earlier session: the folder they run in may
+        # have been deleted since, and it is made here rather than on the first
+        # command so the failure is reported before the model hits it.
+        if settings.tools:
+            self._make_workdir()
 
         threading.Thread(target=update.check, args=(BUILD,), daemon=True).start()
         if not settings_readable:
@@ -159,7 +164,7 @@ class ChatWindow(wx.Frame):
         )
         self.workdir_item = self._item(
             menu,
-            "CD",
+            "Workspace",
             handler=self.on_change_workdir,
             help="Choose the folder the model's commands run in.",
         )
@@ -421,7 +426,9 @@ class ChatWindow(wx.Frame):
         try:
             with open(path, encoding="utf-8") as file:
                 self.session.conversation.load_json(json.load(file))
-        except (OSError, ValueError, KeyError) as e:
+        # TypeError as well, since the file says what shape it is and a
+        # hand-written one can say something that is not a chat at all.
+        except (OSError, ValueError, KeyError, TypeError) as e:
             show_error(VOLlamaError(f"Could not open {path}: {e}"))
             return
         self._refresh_transcript()
@@ -565,8 +572,69 @@ class ChatWindow(wx.Frame):
         settings.save()
 
     def on_toggle_tools(self, event):
-        settings.tools = self.tools_item.IsChecked()
+        """Switch the tools on or off, asking first on the way on.
+
+        The checkbox is the only gate there is: there is no confirmation before
+        a command runs or a file is written, so this is the one place the user
+        can be told that, and it is asked every time rather than once and
+        remembered. Answering no puts the checkbox back rather than leaving it
+        looking on, and the folder is made here because this is the moment the
+        model gets somewhere to write.
+        """
+        if not self.tools_item.IsChecked():
+            settings.tools = False
+            settings.save()
+            self._show_workdir()
+            return
+        if not self._agreed_to_tools():
+            self.tools_item.Check(False)
+            return
+        if not self._make_workdir():
+            self.tools_item.Check(False)
+            return
+        settings.tools = True
         settings.save()
+        self._show_workdir()
+
+    def _make_workdir(self):
+        """Make the folder the tools work in, or say why it could not be."""
+        try:
+            ensure_working_dir()
+            return True
+        except OSError as e:
+            show_error(VOLlamaError(f"Could not create {working_dir()}: {e}"))
+            return False
+
+    def _agreed_to_tools(self):
+        """The warning, with the two answers written out on the buttons.
+
+        A plain Yes/No would leave a screen reader announcing "Yes" with none
+        of what is being agreed to, so the labels carry the sentence and No is
+        the default answer.
+        """
+        message = (
+            "Tools are an experimental feature and they are dangerous.\n\n"
+            "With them on, the model runs shell commands and creates, edits "
+            "and overwrites files on this computer without asking you first. "
+            "There is no confirmation step and no undo. It can delete work, "
+            "change settings, install software or send data over the network, "
+            "and a mistake cannot be taken back.\n\n"
+            f"Its commands run in {working_dir()}, which will be created if it "
+            "is not there, but nothing stops the model from working outside "
+            "it.\n\n"
+            "Only switch this on if you accept that risk."
+        )
+        with wx.MessageDialog(
+            self,
+            message,
+            "Turn tools on?",
+            wx.YES_NO | wx.NO_DEFAULT | wx.ICON_WARNING,
+        ) as dialog:
+            dialog.SetYesNoLabels(
+                "I agree, and I am responsible for any damage",
+                "I disagree, leave tools off",
+            )
+            return dialog.ShowModal() == wx.ID_YES
 
     def on_toggle_speak(self, event):
         settings.speak_response = self.speak_item.IsChecked()
@@ -596,8 +664,14 @@ class ChatWindow(wx.Frame):
 
         An ampersand in a path would otherwise be swallowed as the mnemonic
         marker and the folder would appear under a name it does not have.
+
+        Greyed out with the tools off, since with nothing able to run there the
+        folder is not a setting the user can act on. It sits directly under the
+        checkbox that explains it, which is what keeps it from being an item a
+        screen reader passes over with no way of knowing why.
         """
-        self.workdir_item.SetItemLabel("CD " + working_dir().replace("&", "&&"))
+        self.workdir_item.SetItemLabel("Workspace " + working_dir().replace("&", "&&"))
+        self.workdir_item.Enable(settings.tools)
 
     def on_configure_voice(self, event):
         voices = self.speech.voices()

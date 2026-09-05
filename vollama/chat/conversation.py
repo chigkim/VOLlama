@@ -27,6 +27,12 @@ SUMMARY = "summary"  # the handoff summary standing in for older messages
 # handed what it thought last time.
 REASONING = "reasoning"
 
+# The keys of a saved chat. The messages used to be the whole file, a bare
+# list; a file that is still one loads as exactly that and nothing else, which
+# is all an older save has to say.
+MESSAGES = "messages"
+SUMMARY_AT = "summary_at"  # SUMMARY is the same key here as it is on a message
+
 # What `extra` is called in a saved chat: the same thing it is called here.
 # It used to be written out as `additional_kwargs`, named after the field of
 # llama_index's ChatMessage that this layer replaced — a key in the user's own
@@ -209,31 +215,59 @@ class Conversation:
     # ------------------------------------------------------ saving and loading
 
     def to_json(self):
-        """The chat as plain data.
+        """The chat as plain data: every message, and where the summary stands.
 
         Tool calls and their ids live in `extra`; without them a reloaded chat
         has tool results the server cannot match up.
+
+        The summary is saved because it is not a cache of the messages: it is
+        what the model wrote about them, and a chat that has been compacted
+        several times cannot be sent without one. Saving the messages alone
+        meant a reopened chat went out in full, was refused, and had to buy the
+        summary again — from a different cut point, so it was not even the same
+        summary. It is a field of the file rather than a message in the list
+        because it stands in for messages that are all still there.
         """
-        return [
-            {
-                "role": message.role,
-                "content": message.content,
-                **({EXTRA: copy.deepcopy(message.extra)} if message.extra else {}),
-            }
-            for message in self.messages
-        ]
+        saved = {
+            MESSAGES: [
+                {
+                    "role": message.role,
+                    "content": message.content,
+                    **({EXTRA: copy.deepcopy(message.extra)} if message.extra else {}),
+                }
+                for message in self.messages
+            ]
+        }
+        if self.summary:
+            saved[SUMMARY] = self.summary
+            saved[SUMMARY_AT] = self.summary_at
+        return saved
 
     def load_json(self, data):
-        """Replace the chat with one that was saved."""
+        """Replace the chat with one that was saved.
+
+        A bare list is a chat saved before the summary was written out, and is
+        read as the messages with nothing compacted — which is what it holds.
+        """
+        if isinstance(data, list):
+            data = {MESSAGES: data}
         self.messages = [
             Message(
                 item["role"],
                 item.get("content") or "",
                 item.get(EXTRA) or {},
             )
-            for item in data
+            for item in data.get(MESSAGES) or []
         ]
         self.reset_context()
+        summary = str(data.get(SUMMARY) or "")
+        if summary:
+            # Clamped rather than trusted: the cut is an index into the list
+            # that was saved beside it, and a file edited by hand can put it
+            # past the end, where it would swallow the whole chat.
+            at = data.get(SUMMARY_AT)
+            at = at if isinstance(at, int) and at >= 0 else 0
+            self.compacted(summary, min(at, len(self.messages)))
 
 
 def _without_old_tool_rounds(messages, cut):

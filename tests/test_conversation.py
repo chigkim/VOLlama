@@ -203,23 +203,90 @@ def test_saving_does_not_hand_out_the_live_message_kwargs():
     conversation = Conversation()
     conversation.add_tool_result("c1", "run", "output")
     saved = conversation.to_json()
-    saved[0]["extra"]["tool_call_id"] = "changed"
+    saved["messages"][0]["extra"]["tool_call_id"] = "changed"
     assert conversation.messages[0].extra["tool_call_id"] == "c1"
 
 
 def test_loading_a_chat_forgets_the_summary_of_a_different_one():
     conversation = Conversation()
     conversation.compacted("old summary", upto=0)
-    conversation.load_json([{"role": "user", "content": "hello"}])
+    conversation.load_json({"messages": [{"role": "user", "content": "hello"}]})
     assert conversation.summary == ""
     assert texts(conversation.outgoing()) == ["hello"]
 
 
 def test_a_message_without_extras_round_trips():
     conversation = Conversation()
-    conversation.load_json([{"role": "user", "content": "hello"}])
-    assert conversation.to_json() == [{"role": "user", "content": "hello"}]
+    conversation.load_json({"messages": [{"role": "user", "content": "hello"}]})
+    assert conversation.to_json() == {
+        "messages": [{"role": "user", "content": "hello"}]
+    }
     assert isinstance(conversation.messages[0], Message)
+
+
+def test_a_chat_saved_before_the_summary_was_written_is_a_bare_list():
+    """What an older build wrote: the messages were the whole file."""
+    conversation = Conversation()
+    conversation.load_json([{"role": "user", "content": "hello"}])
+    assert texts(conversation.messages) == ["hello"]
+    assert conversation.summary == ""
+
+
+def test_a_compacted_chat_comes_back_compacted():
+    """Or a chat compacted five times would be sent in full and refused."""
+    conversation = Conversation("system")
+    for i in range(4):
+        conversation.add_user(f"question {i}")
+        conversation.add_assistant(f"answer {i}")
+    conversation.compacted("what was said before", upto=5)
+    before = texts(conversation.outgoing())
+
+    reloaded = Conversation()
+    reloaded.load_json(conversation.to_json())
+    assert reloaded.summary == "what was said before"
+    assert reloaded.summary_at == 5
+    assert texts(reloaded.outgoing()) == before
+    assert texts(reloaded.messages) == texts(conversation.messages)
+
+
+def test_a_summary_is_only_written_out_when_there_is_one():
+    conversation = Conversation()
+    conversation.add_user("hello")
+    assert "summary" not in conversation.to_json()
+
+
+def test_a_cut_past_the_end_of_a_saved_chat_is_brought_back_to_it():
+    """A hand-edited file: the cut is an index into the list saved beside it.
+
+    The whole chat behind the summary is a real state — that is what Compact
+    Conversation produces — so the clamp lands on the end rather than refusing.
+    """
+    conversation = Conversation()
+    conversation.load_json(
+        {
+            "messages": [
+                {"role": "user", "content": "hello"},
+                {"role": "assistant", "content": "hi"},
+            ],
+            "summary": "summary",
+            "summary_at": 99,
+        }
+    )
+    assert conversation.summary_at == 2
+    assert texts(conversation.outgoing()) == ["summary"]
+
+
+def test_a_cut_a_saved_file_cannot_explain_summarizes_nothing():
+    conversation = Conversation()
+    conversation.load_json(
+        {
+            "messages": [{"role": "user", "content": "hello"}],
+            "summary": "summary",
+            "summary_at": "halfway",
+        }
+    )
+    assert conversation.summary_at == 0
+    assert texts(conversation.outgoing()) == ["summary", "hello"]
 
 
 def test_reasoning_is_kept_in_the_history_and_left_out_of_the_request():

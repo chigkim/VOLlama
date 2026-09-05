@@ -12,9 +12,27 @@ def test_relative_paths_come_from_the_chosen_directory(isolated, tmp_path):
     assert workspace.resolve("a/b.txt") == os.path.normpath(str(tmp_path / "a/b.txt"))
 
 
-def test_a_working_directory_that_has_gone_falls_back_to_the_process_one(isolated):
+def test_a_working_directory_that_has_gone_falls_back_to_the_default(isolated):
     isolated.workdir = "/nowhere/at/all"
-    assert workspace.working_dir() == os.getcwd()
+    assert workspace.working_dir() == workspace.default_dir()
+
+
+def test_the_default_is_a_folder_in_the_user_home(isolated):
+    """Spelled with expanduser, so it is the right folder on Windows and mac."""
+    isolated.workdir = ""
+    assert workspace.working_dir() == os.path.join(
+        os.path.expanduser("~"), "VOLlama"
+    )
+    assert "~" not in workspace.working_dir()
+
+
+def test_the_working_directory_is_created_on_demand(isolated, tmp_path, monkeypatch):
+    monkeypatch.setattr(workspace, "HOME_DIR", str(tmp_path / "home" / "VOLlama"))
+    isolated.workdir = ""
+    made = workspace.ensure_working_dir()
+    assert os.path.isdir(made)
+    # Making it again is not an error, and does not move it.
+    assert workspace.ensure_working_dir() == made
 
 
 def test_an_absolute_path_is_left_alone(tmp_path):

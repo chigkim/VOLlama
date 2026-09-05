@@ -2,7 +2,7 @@
 
 Accessible Chat Client for OpenAI-Compatible LLM Servers
 
-## Instructions
+## Usage
 
 VOLlama talks to any server that speaks the OpenAI API: Ollama, llama.cpp, LM Studio, vLLM, OpenAI, Gemini, OpenRouter, and so on. You describe each server with a **preset** that holds its base URL, API key, model, system prompt, and generation parameters.
 
@@ -41,15 +41,17 @@ Nothing is saved until you press OK, so Cancel discards every change including n
 
 API keys are encrypted before they are written to disk. Leave the key empty for local servers that do not need one.
 
-## tools
+## Tools
 
-Tools checkbox in the Chat menu enables  tools for models to read, write, edit files  and run commands on your computer. It is off by default, but it stays where you left it between sessions, and switching preset does not turn it back on or off.
+The Tools checkbox in the Chat menu lets the model read, write and edit files and run commands on your computer. It is off by default and stays where you left it between sessions.
 
-Commands run in the folder shown next to **CD** in the Chat menu, which starts as the folder VOLlama was started in. Choose that menu item to pick a different one, and relative paths in the model's code follow it. It is remembered between sessions, and if the folder is gone the next time you start, commands fall back to the folder VOLlama was started in rather than failing. The model can still run a single command somewhere else without changing this.
+**Commands run and files change without asking you first.** There is no confirmation prompt and no undo. Only turn it on for a model you trust; small local models often call tools badly.
 
-**Code runs and files are changed without asking you first.** There is no confirmation prompt for any of it, so only turn this on for a model you trust. Small local models often call tools badly.
+Workspace in the chat menu is the folder the model works in.The default is `VOLlama` in your home folder unless you pick another. It is created when you turn tools on, remembered between sessions, and falls back to the default if it is gone the next time you start.
 
-Escape stops the reply, and stops a command that is still running foreground.
+The workspace is a starting point rather than a sandbox. The model can run a command elsewhere and write outside it.
+
+Escape stops the reply, and stops a command still running in the foreground.
 
 ## Shortcuts
 
@@ -68,18 +70,18 @@ In order to ask a multimodal model questions about an image:
 
 ## Generation Parameter Values
 
-These parameters are sent to the server as OpenAI API options. Leave a field empty to let the model use its own default.
+These parameters are sent to the server as OpenAI API options. All of them start empty, and an empty field is not sent at all, so the model uses its own default.
 
-| Parameter | Description | Value Type | Default Value |
-|---------------------|-----------------------------------------------------------------------------------------------------|------------|---------------|
-| max_tokens | Maximum number of tokens to generate in the response. | int | empty |
-| temperature | Adjusts the model's creativity. Higher values lead to more creative responses. Range: 0.0-2.0. | float | empty |
-| top_p | Nucleus sampling. Higher values lead to more diverse text, lower values to more focused text. Range: 0.0-1.0. | float | empty |
-| presence_penalty | Penalizes new tokens based on their presence so far. Range: -2.0-2.0. | float | empty |
-| frequency_penalty | Penalizes new tokens based on their frequency so far. Range: -2.0-2.0. | float | empty |
-| stop | Triggers the model to stop generating text when this pattern is encountered. List strings separated by ", ". | string Array | empty |
-| seed | Sets the random number seed for generation. Specific numbers ensure reproducibility. | int | empty |
-| reasoning_effort | Sets the reasoning effort: none, low, medium, or high. Ignored by models without reasoning. | string | empty |
+| Parameter | Description | Value Type |
+|---------------------|-----------------------------------------------------------------------------------------------------|------------|
+| max_tokens | Maximum number of tokens to generate in the response. | int |
+| temperature | Adjusts the model's creativity. Higher values lead to more creative responses. Range: 0.0-2.0. | float |
+| top_p | Nucleus sampling. Higher values lead to more diverse text, lower values to more focused text. Range: 0.0-1.0. | float |
+| presence_penalty | Penalizes new tokens based on their presence so far. Range: -2.0-2.0. | float |
+| frequency_penalty | Penalizes new tokens based on their frequency so far. Range: -2.0-2.0. | float |
+| stop | Triggers the model to stop generating text when this pattern is encountered. List strings separated by ", ". | string Array |
+| seed | Sets the random number seed for generation. Specific numbers ensure reproducibility. | int |
+| reasoning_effort | Sets the reasoning effort: none, low, medium, or high. Ignored by models without reasoning. | string |
 
 The context window is not a generation parameter. It sits on the Connection tab of the preset editor, next to the model, because it describes what that model on that server can hold. It is never sent: VOLlama uses it to decide when to compact the conversation, and RAG uses it to work out how many retrieved chunks fit in one prompt.
 
@@ -89,9 +91,9 @@ A long chat eventually stops fitting in the model's context window. When that ha
 
 So when a reply uses more than 80 percent of the context window, VOLlama asks the model to summarize the conversation for a copy of itself that will never see the original, and the summary takes the place of everything before it in what gets sent from then on. The chat window says `Compacted:` on the line where it happened. You can also do it at any time from the Edit menu, or with control+shift+K.
 
-If the server refuses a message because the chat is too long, VOLlama compacts and sends it again, once.
+If the server refuses a message because the chat is too long, VOLlama compacts and sends it again. Nothing is deleted. The whole chat stays in the window, saves in full, and you can use alt+up to walk back through all the  previous messages. Only what is sent to the model changes. Saving keeps the summary, so a chat you reopen carries on from where it was compacted.
 
-Nothing is deleted. The whole chat stays in the window, saves in full, and alt+up still walks back through every message you sent. Only what is sent to the model changes. A new chat, opening a saved chat, or clearing the last message throws the summary away.
+Starting a new chat, or clearing the last message, throws the summary away.
 
 ## [Retrieval-Augmented Generation](https://blogs.nvidia.com/blog/what-is-retrieval-augmented-generation/)
 
@@ -109,15 +111,15 @@ Note: RAG retrieves only snippets of text relevant to your question, not full su
 
 This section describes the parameters related to the Retrieval-Augmented Generation (RAG) feature. They also belong to a preset, on the RAG page of the Preset Manager.
 
-| Parameter | Description | Value Type | Default Value |
-|---------------------|-----------------------------------------------------------------------------------------------------|------------|---------------|
-| embedding_base_url | Base URL of the OpenAI-compatible server used for embeddings. | string | http://localhost:11434/v1/ |
-| embedding_api_key | API key for the embedding server. Empty for local servers. | string | empty |
-| embedding_model | Model used to embed documents and questions. | string | EmbeddingGemma |
-| chunk_size | Determines the size of text chunks for indexing. | int | 1024 |
-| chunk_overlap | Specifies the overlap between the start and end of each chunk. | int | 20 |
-| similarity_top_k | Number of the most relevant chunks fed to the model. | int | 2 |
-| similarity_cutoff | The threshold for filtering out less relevant chunks. Setting too high may exclude all chunks. | float | 0.0 |
+| Parameter | Description | Value Type |
+|---------------------|-----------------------------------------------------------------------------------------------------|------------|
+| embedding_base_url | Base URL of the OpenAI-compatible server used for embeddings. | string |
+| embedding_api_key | API key for the embedding server. Empty for local servers. | string |
+| embedding_model | Model used to embed documents and questions. | string |
+| chunk_size | Determines the size of text chunks for indexing. | int |
+| chunk_overlap | Specifies the overlap between the start and end of each chunk. | int |
+| similarity_top_k | Number of the most relevant chunks fed to the model. | int |
+| similarity_cutoff | The threshold for filtering out less relevant chunks. Setting too high may exclude all chunks. | float |
 
 ## Docker (Optional)
 

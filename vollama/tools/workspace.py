@@ -26,9 +26,20 @@ DEVICES = (
     | {f"lpt{n}" for n in range(1, 10)}
 )
 
+# Where the tools work when the user has not chosen a folder. A folder of the
+# user's own rather than the current directory, which for a frozen build is
+# wherever the launcher happened to start. Written with expanduser so the one
+# name is C:\Users\me\VOLlama on Windows and /Users/me/VOLlama on mac.
+HOME_DIR = os.path.join("~", "VOLlama")
+
+
+def default_dir():
+    """The folder the tools work in when the user has chosen none."""
+    return os.path.normpath(os.path.expanduser(HOME_DIR))
+
 
 def working_dir():
-    """Where a relative path is taken from. What the Chat menu's CD shows.
+    """Where a relative path is taken from. What the Chat menu's Workspace shows.
 
     Checked on the way out rather than when it is set, since a directory chosen
     in an earlier session can be gone, or on a drive that is not mounted, by
@@ -37,7 +48,20 @@ def working_dir():
     chosen = (settings.workdir or "").strip()
     if chosen and os.path.isdir(chosen):
         return chosen
-    return os.getcwd()
+    return default_dir()
+
+
+def ensure_working_dir():
+    """Make the working directory if it is not there, and hand it back.
+
+    Called when the tools are switched on rather than at startup: that is the
+    moment the default stops being hypothetical, and a session that never runs
+    a tool should not leave a folder behind. Raises OSError if it cannot be
+    made, and the caller is the one that says so.
+    """
+    directory = working_dir()
+    os.makedirs(directory, exist_ok=True)
+    return directory
 
 
 def resolve(path):
