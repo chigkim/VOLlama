@@ -1,5 +1,6 @@
 """The tool registry: what the model is offered, and how a call reaches it."""
 
+import inspect
 import json
 
 import pytest
@@ -11,6 +12,19 @@ def test_every_tool_is_offered_exactly_once():
     names = [tool.name for tool in registry.REGISTRY]
     assert names == ["run", "poll", "read", "write", "edit"]
     assert sorted(registry.BY_NAME) == sorted(names)
+
+
+def test_every_declared_parameter_is_one_the_function_takes():
+    """The schema is what the model sends, so a name only it knows is a call
+    that can never run: the registry spreads the arguments as keywords."""
+    for tool in registry.REGISTRY:
+        takes = inspect.signature(tool.run).parameters
+        declared = tool.schema["function"]["parameters"]["properties"]
+        assert set(declared) <= set(takes), tool.name
+        required = tool.schema["function"]["parameters"].get("required", [])
+        for name, parameter in takes.items():
+            if parameter.default is inspect.Parameter.empty:
+                assert name in required, f"{tool.name}.{name}"
 
 
 def test_free_calls_are_the_ones_that_only_look():

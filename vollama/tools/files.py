@@ -25,7 +25,15 @@ import difflib
 import json
 import os
 
-from vollama.tools import content, matching
+from vollama.tools import matching
+from vollama.tools.content import (
+    binary,
+    describe_bytes,
+    fails_closed,
+    introduced,
+    placeholder,
+    size_of,
+)
 from vollama.tools.workspace import checked
 
 # How much of a file one read returns. Lines first, since that is how a model
@@ -66,13 +74,13 @@ def load(path):
             f"{path} is larger than {MAX_FILE // (1024 * 1024)} MB. "
             "Read it in pieces with run instead."
         )
-    if content.binary(raw[:8192]):
+    if binary(raw[:8192]):
         # Named rather than just refused, because "binary file" leaves the model
         # to guess whether it asked for the wrong path or the right one in the
         # wrong tool, and those have different fixes.
-        kind = content.describe_bytes(raw) or "binary data"
+        kind = describe_bytes(raw) or "binary data"
         raise ValueError(
-            f"{path} is not text: {kind}, {content.size_of(len(raw))}. "
+            f"{path} is not text: {kind}, {size_of(len(raw))}. "
             "Use run if you need its bytes."
         )
     try:
@@ -164,12 +172,12 @@ def read(path, offset=1, limit=MAX_LINES):
     return f"{body}\n\n{footer}{note}]"
 
 
-def write(path, text):
-    """Create or replace a file with exactly the text given."""
-    text = (text or "").replace("\r\n", "\n")
+def write(path, content):
+    """Create or replace a file with exactly the content given."""
+    content = (content or "").replace("\r\n", "\n")
     # Before the path is even resolved: this is not a file, whatever it was
     # going to be written to.
-    left = content.placeholder(text)
+    left = placeholder(content)
     if left:
         return (
             f"Nothing was written, because line {left[0]} of the content says "
@@ -186,21 +194,22 @@ def write(path, text):
         # new one gets \n and no BOM, which is what everything except Notepad
         # expects.
         before, newline, bom = load(full) if existed else (None, "\n", "")
-        broke = content.introduced(full, before, text)
-        if broke and content.fails_closed(full):
+        broke = introduced(full, before, content)
+        if broke and fails_closed(full):
             return (
                 f"Nothing was written to {full}, because {broke}. Fix it and "
                 "send the whole file again."
             )
-        save(full, text, newline, bom)
+        save(full, content, newline, bom)
     except (ValueError, OSError) as e:
         return str(e)
-    count = text.count("\n") + (0 if text.endswith("\n") or not text else 1)
+    ends = content.endswith("\n") or not content
+    count = content.count("\n") + (0 if ends else 1)
     lines = "1 line" if count == 1 else f"{count} lines"
     was = "Replaced" if existed else "Created"
     ending = "CRLF" if newline == "\r\n" else "LF"
     note = f" Warning: {broke}." if broke else ""
-    return f"{was} {full}: {lines}, {len(text)} characters, {ending}.{note}"
+    return f"{was} {full}: {lines}, {len(content)} characters, {ending}.{note}"
 
 
 # A model that builds old_text by writing Python rather than by copying the
@@ -274,8 +283,8 @@ def edit(path, edits):
     # Checked here as well as in write, since an edit breaks a config file the
     # same way a rewrite does, and by the time another program trips over it the
     # tool call that did it is several messages back.
-    broke = content.introduced(full, before, after)
-    if broke and content.fails_closed(full):
+    broke = introduced(full, before, after)
+    if broke and fails_closed(full):
         return (
             f"Nothing was changed in {full}, because the result would not "
             f"parse: {broke}. This is what the edit would have done:\n"

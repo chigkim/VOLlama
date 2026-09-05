@@ -23,8 +23,10 @@ from vollama.errors import ConfigError
 
 # What we assume a model holds when a preset does not say. Only ever used to
 # decide when to compact and how much retrieved text to send; it is never sent
-# to the server, so guessing low is safe and guessing high is not.
-DEFAULT_CONTEXT_WINDOW = 8192
+# to the server. 8192 was the old guess, and it is now wrong for everything: a
+# model that small is rare, so the default compacted long before it had to and
+# refused retrieval prompts that would have fit.
+DEFAULT_CONTEXT_WINDOW = 64000
 
 # What a preset embeds with when it does not say. Unlike `base_url`, this one
 # does have a default: `validate()` does not check it, so a default here cannot
