@@ -131,7 +131,7 @@ class ChatWindow(wx.Frame):
         menus = wx.MenuBar()
         menus.Append(self._chat_menu(), "&Chat")
         menus.Append(self._edit_menu(), "&Edit")
-        menus.Append(self._documents_menu(), "&Documents")
+        menus.Append(self._documents_menu(), "&RAG")
         self.SetMenuBar(menus)
         self._build_toolbar()
         self._build_panel()

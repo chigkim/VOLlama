@@ -1,5 +1,21 @@
 # Change log
 
+## v1.0.0-beta.1
+
+* For maintainability, VOLlama only supports OpenAI compatible chat completion API which is still supported by Anthropic, Gemini, OpenRouter. The API Settings dialog is gone.
+* Embedding also uses OpenAI compatible API.
+* Presets now hold the wide configuration: base URL, API key, model, context window, system prompt, generation parameters, and the RAG settings.
+* You can Create, edit, duplicate and delete presets in the Preset Manager (Chat > Presets Ctrl/Cmd+P).
+* The model can run commands and read, write and edit files, if you turn on Chat > Tools. It asks you to agree first, every time you switch it on. There is no confirmation before each command and no undo.
+* Chat > Workspace picks the folder the tools work in. It defaults to a VOLlama folder in your home directory.
+* Long chats are compacted automatically before the server runs out of room, and you can manually run Edit > Compact Conversation (Ctrl/Cmd+Shift+K).
+* Once you load or create an index for RAG, the model can decide to search the index via search toolcall. You no longer have to prefix a question with /q, though /q still works for models without toolcall support.
+* RAG > Show Context prints the retrieved context from a search.
+* RAG > Clear: unload the indexed and disable the search tool.
+* Chat > Show Reasoning: prints reasoning from the model.
+* Voices are grouped into submenus by language rather than by identifier.
+* If server reports cached prompt, speed and token counts are calculated from what the server actually used, ignoring cached prompt.
+
 ## v0.7.0
 
 * Now you can specify embedding model in rag settings.
