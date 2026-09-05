@@ -92,6 +92,26 @@ def labelled(panel, grid, row, label, make, tip):
     return control
 
 
+def pick(button, labels, current, chose):
+    """Pop a menu of `labels` on `button` and call `chose(index)` with the pick.
+
+    The preset button's own widget, doing the same job one page down: a button
+    that names a list, and a menu of that list under it. `wx.SingleChoiceDialog`
+    was a second window between the field and the value, and a screen reader
+    reads its list box without the button that opened it — the menu is read as
+    what it is, with a count of how many entries it has and the current value
+    checked in place.
+    """
+    menu = wx.Menu()
+    for index, label in enumerate(labels):
+        # A menu reads an ampersand in a model name or a URL as a mnemonic.
+        item = menu.Append(wx.NewIdRef(), label.replace("&", "&&"), kind=wx.ITEM_CHECK)
+        item.Check(index == current)
+        button.Bind(wx.EVT_MENU, functools.partial(chose, index=index), item)
+    button.PopupMenu(menu)
+    menu.Destroy()
+
+
 class ConnectionPage(wx.Panel):
     """Name, base URL, api key, model and context window."""
 
@@ -178,12 +198,17 @@ class ConnectionPage(wx.Panel):
 
     def on_server(self, event):
         """Pick a known endpoint. Only the URL is filled in, never the key."""
-        labels = [f"{name} - {url}" for name, url in SERVERS]
-        with wx.SingleChoiceDialog(self, "Choose a server:", "Servers", labels) as dialog:
-            dialog.SetName("Server List")
-            if dialog.ShowModal() != wx.ID_OK:
-                return
-            name, url = SERVERS[dialog.GetSelection()]
+        urls = [url for _, url in SERVERS]
+        current = self.fields["base_url"].GetValue().strip()
+        pick(
+            self.server_button,
+            [f"{name} - {url}" for name, url in SERVERS],
+            urls.index(current) if current in urls else -1,
+            self._server_chosen,
+        )
+
+    def _server_chosen(self, event, index):
+        name, url = SERVERS[index]
         self.fields["base_url"].SetValue(url)
         self.set_status(f"Base URL set to {name}. Enter an API key if it needs one.")
         # Focus follows the value that just changed, not the button that changed
@@ -226,13 +251,16 @@ class ConnectionPage(wx.Panel):
             self.fields["model"].SetFocus()
             return
         self.set_status(f"Found {len(models)} models.")
-        with wx.SingleChoiceDialog(self, "Choose a model:", "Models", models) as dialog:
-            dialog.SetName("Model List")
-            current = self.fields["model"].GetValue().strip()
-            if current in models:
-                dialog.SetSelection(models.index(current))
-            if dialog.ShowModal() == wx.ID_OK:
-                self.fields["model"].SetValue(dialog.GetStringSelection())
+        current = self.fields["model"].GetValue().strip()
+        pick(
+            self.choose_button,
+            models,
+            models.index(current) if current in models else -1,
+            functools.partial(self._model_chosen, models),
+        )
+
+    def _model_chosen(self, models, event, index):
+        self.fields["model"].SetValue(models[index])
         self.fields["model"].SetFocus()
 
 
