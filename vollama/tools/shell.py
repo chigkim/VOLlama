@@ -16,8 +16,10 @@ owns those jobs, and it is the only mutable state in this module.
 """
 
 import functools
+import logging
 import os
 import platform
+import random
 import re
 import shutil
 import signal
@@ -29,6 +31,8 @@ import time
 from contextlib import contextmanager
 
 from vollama.tools.workspace import checked_directory
+
+log = logging.getLogger(__name__)
 
 WINDOWS = platform.system() == "Windows"
 
@@ -99,9 +103,35 @@ MAX_BUFFER = 200000
 # the cost of a parked job is two reader threads and its buffer, not CPU.
 MAX_JOBS = 32
 
-# How long a finished job stays readable after its completion was reported.
+# How long a finished job stays readable once its output has been handed over.
 FINISHED_TTL = 600
+
+# And how long when it has not. The note only names the ending, so the output
+# is still in the buffer when the model is told, and with resume off that note
+# waits in the history for the user's next message -- which can be an hour
+# later. Dropping on the older rule (reported plus ten minutes) meant the poll
+# the note asks for answered "There is no background command called
+# brave-otter". Long rather than unbounded: what is held is one buffer per job,
+# and a model that never polls must not accumulate them for a whole session.
+UNREAD_TTL = 4 * 3600
 SWEEP_SECONDS = 5
+
+# What a job is called. Two words rather than a number because every id here is
+# read aloud: exec_1, exec_7 and exec_11 are hard to tell apart at a screen
+# reader's speed, and brave-otter and merry-panda are not. Prefix matching in
+# find() gets better too, since "brave" is unambiguous where "exec_1" is the
+# start of "exec_10".
+#
+# No adjective here may name a state a process can be in. status() writes
+# "Background command {id} {status}", so a "quiet" or "busy" or "idle" job
+# would read as a contradiction of its own ending.
+ADJECTIVES = (
+    "brave clever curious gentle jolly lucky merry noble polite proud sunny witty"
+).split()
+ANIMALS = (
+    "badger dolphin falcon hedgehog koala lemur otter panda penguin rabbit "
+    "tiger walrus"
+).split()
 
 def shell():
     """The program that runs a command, and the flag that hands it one.
@@ -573,6 +603,7 @@ class Job:
         self.expired = False  # killed for running past its timeout
         self.stalled = False  # killed for going quiet
         self.reported = False  # has the model been told it finished
+        self.read = False  # has anyone taken its output after it finished
         self.lock = threading.Lock()
         self.out = Stream()
         # One reader for one pipe: stderr is merged into stdout at the pipe, so
@@ -672,7 +703,14 @@ class Job:
         return f"finished with exit code {code}" + (f" ({meaning})" if meaning else "")
 
     def news(self):
-        """Output since the last read, as text."""
+        """Output since the last read, as text.
+
+        The one place output leaves a job, so it is where `read` is set -- and
+        only once the job has ended, since a poll partway through a running one
+        has not taken what it went on to print.
+        """
+        if not self.running():
+            self.read = True
         with self.lock:
             out, missed = self.out.take()
         if missed:
@@ -696,6 +734,13 @@ class JobTable:
         self._jobs = {}
         self._lock = threading.Lock()
         self._sweeper = None
+        # Called when a job has ended and nobody has been told, so its ending
+        # reaches the user rather than waiting until they happen to type. A
+        # nudge and not the news: what is worth saying is notes(), and the
+        # listener is the one that knows whether now is a moment to say it. A
+        # plain attribute the UI sets, left None in the tests and on any path
+        # with nobody watching.
+        self.on_finished = None
 
     def add(self, job):
         """Register a job, giving it an id, and make room if the table is full.
@@ -718,11 +763,21 @@ class JobTable:
         return evicted
 
     def _free_id(self):
-        """A short id that is easy for a model to copy back. Call under lock."""
-        n = 1
-        while f"exec_{n}" in self._jobs:
+        """A name no live job has. Call under lock.
+
+        144 pairs against MAX_JOBS running jobs plus whatever is being held for
+        FINISHED_TTL, so a free one is normally found on the first try; the
+        counter is only there so a saturated table still hands out something
+        unique rather than looping.
+        """
+        for _ in range(len(ADJECTIVES) * len(ANIMALS)):
+            name = f"{random.choice(ADJECTIVES)}-{random.choice(ANIMALS)}"
+            if name not in self._jobs:
+                return name
+        n = 2
+        while f"{name}-{n}" in self._jobs:
             n += 1
-        return f"exec_{n}"
+        return f"{name}-{n}"
 
     def find(self, session_id):
         """A job by id, or by any unambiguous start of one."""
@@ -749,6 +804,17 @@ class JobTable:
             lines.append(f"{job.id}: {job.status()}. Command: {shorten(job.command)}")
         return "\n".join(lines)
 
+    def notes_waiting(self):
+        """Whether there is an ending the model has not been told about.
+
+        Asked before starting a turn for it, since notes() consumes what it
+        reports and a turn must not be started on nothing.
+        """
+        with self._lock:
+            return any(
+                not j.reported and not j.running() for j in self._jobs.values()
+            )
+
     def notes(self):
         """What to tell the model about jobs that ended while it was not looking.
 
@@ -764,11 +830,15 @@ class JobTable:
                 continue
             job.settle()
             job.reported = True
-            job.drain(1)
             lines.append(f"Background command {job.id} {job.status()}.")
             lines.append(f"Command: {shorten(job.command)}")
-            news = job.news()
-            lines.append(news if news else "It produced no further output.")
+            # The ending only. The output stays in the buffer for poll to hand
+            # over, because a model told a job has ended polls it anyway:
+            # wording the note as the delivery did not stop that on any model
+            # tried, and a note that consumes the stream makes the poll it
+            # cannot prevent answer "No new output" over output the job really
+            # produced.
+            lines.append(f"Poll {job.id} to read its output.")
         return "\n".join(lines)
 
     def kill_all(self):
@@ -778,6 +848,20 @@ class JobTable:
             self._jobs.clear()
         for job in waiting:
             job.kill()
+
+    def _announce(self):
+        """Nudge the listener that there is an ending nobody has been told of.
+
+        Repeated every sweep until something collects it, since the listener
+        may be in the middle of a turn and unable to act on the first one.
+
+        Exceptions are swallowed because this is the thread that kills stalled
+        jobs, and a listener that raises must not take that with it.
+        """
+        try:
+            self.on_finished()
+        except Exception:
+            log.exception("background listener failed")
 
     def _start_sweeper(self):
         if self._sweeper is None or not self._sweeper.is_alive():
@@ -791,6 +875,8 @@ class JobTable:
         """
         while True:
             time.sleep(SWEEP_SECONDS)
+            if self.on_finished is not None and self.notes_waiting():
+                self._announce()
             for job in self.all():
                 if job.running():
                     # Quiet first, since that is the usual reason a job is
@@ -804,9 +890,11 @@ class JobTable:
                         job.kill()
                     continue
                 job.settle()
-                # Keep it readable until its ending has been reported, so a job
-                # that finishes between turns is not lost before anyone looks.
-                if job.reported and time.monotonic() - job.finished_at > FINISHED_TTL:
+                # Keep it readable until its ending has been reported, so a
+                # job that finishes between turns is not lost before anyone
+                # looks, and well past that until its output has been read.
+                ttl = FINISHED_TTL if job.read else UNREAD_TTL
+                if job.reported and time.monotonic() - job.finished_at > ttl:
                     with self._lock:
                         self._jobs.pop(job.id, None)
 

@@ -91,8 +91,16 @@ class ChatView(Protocol):
     def notice(self, text: str) -> None:
         """Something the user should read that the model did not say.
 
-        Compaction, recovery from a truncated reply, a background command that
-        finished between turns.
+        Compaction, recovery from a truncated reply.
+        """
+
+    def background(self, text: str) -> None:
+        """What a background command did while nobody was looking.
+
+        Its own method rather than a notice because two decisions hang off it
+        that a notice does not want: it is the outcome of a tool call and reads
+        as one, and it is the only thing that arrives when nothing else is
+        happening, so it is the one machine line worth speaking.
         """
 
     def stats(self, stats: TurnStats) -> None:
@@ -113,6 +121,7 @@ class NullView:
     def tool_called(self, description): ...
     def tool_result(self, result): ...
     def notice(self, text): ...
+    def background(self, text): ...
     def sources(self, description): ...
     def stats(self, stats): ...
     def finished(self): ...

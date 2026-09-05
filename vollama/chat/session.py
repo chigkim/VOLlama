@@ -14,6 +14,7 @@ this is a dialog, a status line or a test failure.
 
 import itertools
 import logging
+import threading
 import time
 from dataclasses import dataclass
 
@@ -86,11 +87,64 @@ class ChatSession:
         # The tools this turn is offering. Set per turn, since search comes and
         # goes with the index and the Tools checkbox moves mid-chat.
         self.tools = []
+        # One turn at a time. The generating flag says whether one is running,
+        # but a turn the user starts and a turn a finished background command
+        # starts are decided on different threads, and reading a flag is not
+        # the same as holding the right to start.
+        self._turning = threading.Lock()
 
     # -------------------------------------------------------------- the turn
 
     def ask(self, prompt, view=None, attachments=NOTHING):
         """Answer one message. Raises if the request cannot be made at all."""
+        self._turn(
+            lambda llm, preset, view: self._run_turn(
+                prompt, attachments, llm, preset, view
+            ),
+            view,
+        )
+
+    def resume(self, view=None):
+        """Answer a background command that finished with nobody watching.
+
+        A turn nobody typed. The note the jobs left behind is its user message,
+        the same one an ordinary turn would have picked up at its start, so
+        there is nothing here the model has not seen before — only the moment
+        it is sent is new. Does nothing if there is no note, or if a turn is
+        already running: two requests in one conversation is not a recovery.
+        """
+        if not jobs.notes_waiting():
+            return
+        self._turn(self._resume_turn, view, wait=False)
+
+    def collect_background(self, view=None):
+        """Take what background commands said into the history, sending nothing.
+
+        What happens when a job ends and the model is not to be woken for it:
+        the note goes in as the message it would have gone in as anyway, so it
+        is on screen the moment it happens and rides the next request rather
+        than buying one of its own. Waits for any turn to finish rather than
+        adding a message to a conversation mid-request.
+        """
+        with self._turning:
+            self._report_background(view or NullView())
+
+    def _turn(self, run, view, wait=True):
+        """The wrapper every turn shares: a client, a stop flag, and rollback.
+
+        `wait` is the difference between the two callers. A message the user
+        typed queues behind whatever is running and is answered next; a turn a
+        background command asked for gives up instead, since the turn already
+        running will collect the same note itself before it ends.
+        """
+        if not self._turning.acquire(blocking=wait):
+            return
+        try:
+            self._one_turn(run, view)
+        finally:
+            self._turning.release()
+
+    def _one_turn(self, run, view):
         view = view or NullView()
         preset = presets.require_active()
         # Composed once for the turn: what is offered must not change between
@@ -106,7 +160,7 @@ class ChatSession:
             # waited on, and a stale stop flag would answer for the next
             # command anybody starts.
             with cancellation.watching(lambda: not self.generating):
-                self._run_turn(prompt, attachments, llm, preset, view)
+                run(llm, preset, view)
         except Exception:
             # The turn did not happen, so it should not be in the history: a
             # half-added turn is one the next request cannot send.
@@ -115,6 +169,16 @@ class ChatSession:
         finally:
             self.generating = False
             view.finished()
+
+    def _resume_turn(self, llm, preset, view):
+        """One turn whose whole prompt is what the background jobs reported."""
+        if not self._report_background(view):
+            return
+        self.generating = True
+        view.status("Processing...")
+        self._converse(llm, preset, view)
+        if self.generating:
+            self._compact_if_full(preset, view)
 
     def _run_turn(self, prompt, attachments, llm, preset, view):
         """One turn, from what the user typed to the model having nothing left."""
@@ -422,9 +486,10 @@ class ChatSession:
         """
         note = jobs.notes()
         if not note:
-            return
+            return False
         self.conversation.add_user(note, marker=BACKGROUND)
-        view.notice(note)
+        view.background(note)
+        return True
 
     # --------------------------------------------------------------- retrieval
 

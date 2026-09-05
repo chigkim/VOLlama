@@ -1,6 +1,8 @@
 """run and poll: reporting a command, and the jobs that outlive a call."""
 
+import re
 import sys
+import time
 
 import pytest
 
@@ -135,10 +137,10 @@ def test_a_slow_command_becomes_a_session_that_poll_can_finish(monkeypatch, tmp_
     monkeypatch.setattr(shell, "jobs", table)
 
     started = shell.run(slow_script(tmp_path), workdir=str(tmp_path))
-    assert "Session: exec_1" in started
     assert "starting" in started
+    session = re.search(r"Session: (\S+)", started).group(1)
 
-    finished = shell.poll("exec_1", wait=10)
+    finished = shell.poll(session, wait=10)
     assert "finished with exit code 0" in finished
     assert "done" in finished
     # Output already handed over is not handed over twice.
@@ -147,8 +149,113 @@ def test_a_slow_command_becomes_a_session_that_poll_can_finish(monkeypatch, tmp_
     table.kill_all()
 
 
+def test_a_job_is_named_rather_than_numbered(monkeypatch, tmp_path):
+    monkeypatch.setattr(shell, "YIELD_SECONDS", 0.3)
+    table = shell.JobTable()
+    monkeypatch.setattr(shell, "jobs", table)
+
+    shell.run(slow_script(tmp_path), workdir=str(tmp_path))
+    shell.run(slow_script(tmp_path), workdir=str(tmp_path))
+
+    names = [job.id for job in table.all()]
+    assert len(set(names)) == 2
+    for name in names:
+        adjective, animal = name.split("-")
+        assert adjective in shell.ADJECTIVES
+        assert animal in shell.ANIMALS
+
+    table.kill_all()
+
+
+def test_a_job_that_ends_nudges_until_it_is_collected(monkeypatch, tmp_path):
+    monkeypatch.setattr(shell, "YIELD_SECONDS", 0.3)
+    monkeypatch.setattr(shell, "SWEEP_SECONDS", 0.05)
+    table = shell.JobTable()
+    monkeypatch.setattr(shell, "jobs", table)
+    nudges = []
+    table.on_finished = lambda: nudges.append(1)
+
+    shell.run(slow_script(tmp_path), workdir=str(tmp_path))
+    deadline = time.monotonic() + 10
+    while not nudges and time.monotonic() < deadline:
+        time.sleep(0.05)
+
+    # The nudge carries nothing: what is worth saying is notes(), and the
+    # listener may be mid-turn and unable to act on the first one, so it repeats.
+    assert nudges
+    note = table.notes()
+    assert "finished with exit code 0" in note
+    assert "Poll" in note
+
+    collected = len(nudges)
+    time.sleep(0.2)
+    assert len(nudges) == collected
+    table.kill_all()
+
+
+def test_the_note_leaves_the_output_for_poll(monkeypatch, tmp_path):
+    monkeypatch.setattr(shell, "YIELD_SECONDS", 0.3)
+    table = shell.JobTable()
+    monkeypatch.setattr(shell, "jobs", table)
+
+    started = shell.run(slow_script(tmp_path), workdir=str(tmp_path))
+    session = re.search(r"Session: (\S+)", started).group(1)
+    deadline = time.monotonic() + 10
+    while table.notes_waiting() is False and time.monotonic() < deadline:
+        time.sleep(0.05)
+
+    # The note names the ending and nothing else: a model reads it and polls,
+    # and that poll has to answer with the output rather than "No new output".
+    note = table.notes()
+    assert "done" not in note
+    assert "done" in shell.poll(session)
+    table.kill_all()
+
+
+def test_a_job_whose_output_nobody_read_is_kept_longer(monkeypatch, tmp_path):
+    monkeypatch.setattr(shell, "YIELD_SECONDS", 0.3)
+    monkeypatch.setattr(shell, "SWEEP_SECONDS", 0.05)
+    monkeypatch.setattr(shell, "FINISHED_TTL", 0)
+    table = shell.JobTable()
+    monkeypatch.setattr(shell, "jobs", table)
+
+    started = shell.run(slow_script(tmp_path), workdir=str(tmp_path))
+    session = re.search(r"Session: (\S+)", started).group(1)
+    deadline = time.monotonic() + 10
+    while table.notes_waiting() is False and time.monotonic() < deadline:
+        time.sleep(0.05)
+    table.notes()
+
+    # Reported but unread, so the sweeper leaves it where the poll the note
+    # asked for can still find it, however long the user takes to look.
+    time.sleep(0.3)
+    assert table.find(session) is not None
+    assert "done" in shell.poll(session)
+
+    # Read now, so the short clock applies and it is forgotten.
+    deadline = time.monotonic() + 5
+    while table.find(session) is not None and time.monotonic() < deadline:
+        time.sleep(0.05)
+    assert table.find(session) is None
+    table.kill_all()
+
+
+def test_an_ending_the_model_has_had_is_not_waiting_any_more(monkeypatch, tmp_path):
+    monkeypatch.setattr(shell, "YIELD_SECONDS", 0.3)
+    table = shell.JobTable()
+    monkeypatch.setattr(shell, "jobs", table)
+
+    started = shell.run(slow_script(tmp_path), workdir=str(tmp_path))
+    session = re.search(r"Session: (\S+)", started).group(1)
+    shell.poll(session, wait=10)
+
+    assert table.notes_waiting() is False
+    assert table.notes() == ""
+    table.kill_all()
+
+
 def test_polling_a_session_that_never_existed_says_so():
-    assert "There is no background command" in shell.poll("exec_99")
+    assert "There is no background command" in shell.poll("no-such-job")
 
 
 def test_listing_with_nothing_running():
@@ -157,6 +264,6 @@ def test_listing_with_nothing_running():
 
 def test_the_transcript_summary_is_the_command_itself():
     assert shell.summarize_run({"command": "git status"}) == "git status"
-    assert shell.summarize_poll({"session_id": "exec_1", "kill": True}) == (
-        "poll exec_1 (stop it)"
+    assert shell.summarize_poll({"session_id": "brave-otter", "kill": True}) == (
+        "poll brave-otter (stop it)"
     )

@@ -52,7 +52,9 @@ def lines_for(message, name):
     if message.role == "tool":
         return [f"Result: {trim(content)}"]
     if message.extra.get(BACKGROUND):
-        return [f"Background: {content}"]
+        # The same line it was shown as when it arrived, so a reopened chat
+        # reads like the one the user watched.
+        return [f"Result: {trim(content)}"]
     if message.role != "assistant":
         return [f"You: {content}"]
     # The same shape the reply had while it was arriving, so a re-rendered
@@ -149,6 +151,20 @@ class TranscriptView:
 
     def notice(self, text):
         self._append(f"{text}{os.linesep}")
+
+    def background(self, text):
+        """A background command's ending, worded as what it is: a tool result.
+
+        Trimmed like any other, since the same output delivered inline goes
+        through trim() and a build log is no shorter for having arrived late.
+        Spoken, unlike a tool result, because this is the one line that turns
+        up when nothing else is happening: without it a job that finished
+        between turns is silent, and with an answer following it, it is the
+        only explanation of why the model started talking.
+        """
+        self.tool_result(text)
+        if settings.speak_response:
+            self._later(self.speech.speak, trim(text))
 
     def sources(self, description):
         """The passages a retrieval was answered from, if the user wants them.

@@ -107,6 +107,10 @@ class ChatWindow(wx.Frame):
         self.view = transcript.TranscriptView(
             self.output, self.set_status, self.speech, self._on_turn_finished
         )
+        # A job that ends between turns has nothing to report through, since a
+        # turn is the only thing that ever speaks. This is the one line that
+        # gives it one.
+        shell.jobs.on_finished = self._on_background_finished
         self.Maximize(True)
         self.Centre()
         self.Show()
@@ -161,6 +165,15 @@ class ChatWindow(wx.Frame):
             "Let the model run commands and edit files on this computer. It "
             "does so without asking you first. Searching documents you have "
             "indexed is not covered by this and is always allowed.",
+        )
+        self.resume_item = self._check(
+            menu,
+            "Continue After a Background Command",
+            settings.resume_after_background,
+            self.on_toggle_resume,
+            "When a command running in the background finishes, hand the "
+            "result to the model straight away instead of waiting for your "
+            "next message.",
         )
         self.workdir_item = self._item(
             menu,
@@ -346,10 +359,49 @@ class ChatWindow(wx.Frame):
         attachments, self.attachments = self.attachments, Attachments()
         self._in_background(self.session.ask, message, self.view, attachments)
 
+    def _on_background_finished(self):
+        """A job ended and nobody has been told. On the job sweeper's thread.
+
+        Nothing to do while a turn is running. A line written into a reply that
+        is still arriving corrupts it on screen and interrupts it in speech, and
+        a note handed to the model mid-turn makes it start half-done work again.
+        The sweeper nudges every few seconds, so the ending is picked up as soon
+        as the turn is over.
+        """
+        if not self.session.generating:
+            self._flush_background()
+
+    def _flush_background(self):
+        """Hand any finished job to the model, or just to the transcript.
+
+        Both paths put the ending in the conversation and on screen; they differ
+        only in whether the model is asked to carry on from it.
+        """
+        work = (
+            self.session.resume
+            if settings.resume_after_background
+            else self.session.collect_background
+        )
+
+        def flush():
+            work(self.view)
+            # The note is a message, so alt+up has one more to walk past.
+            wx.CallAfter(self._sync_history)
+
+        self._in_background(flush)
+
+    def _sync_history(self):
+        self.history_index = len(self.session.conversation.messages)
+
     def _on_turn_finished(self):
         play("receive.wav")
         self.send_button.SetLabel("Send")
         self.history_index = len(self.session.conversation.messages)
+        # A job that ended after the last tool round has missed every point
+        # inside the turn. This is the last one, and it is what stops such an
+        # ending from waiting until the user happens to type again.
+        if shell.jobs.notes_waiting():
+            self._flush_background()
 
     def focus_prompt(self, event=None):
         self.session.stop()
@@ -569,6 +621,10 @@ class ChatWindow(wx.Frame):
         retrieval it describes.
         """
         settings.show_context = self.context_item.IsChecked()
+        settings.save()
+
+    def on_toggle_resume(self, event):
+        settings.resume_after_background = self.resume_item.IsChecked()
         settings.save()
 
     def on_toggle_tools(self, event):

@@ -74,6 +74,12 @@ class Settings:
     # changes mid-chat, not "what server is this".
     tools: bool = False
     workdir: str = ""
+    # Whether a background command finishing starts a turn of its own. Off by
+    # default: it is the one thing here that makes the app speak without being
+    # spoken to, and with tools on it means unattended tool rounds against this
+    # machine. With it off the ending is still announced, and still reaches the
+    # model with the next message.
+    resume_after_background: bool = False
 
     @classmethod
     def from_dict(cls, data):

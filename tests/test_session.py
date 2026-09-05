@@ -358,7 +358,9 @@ def test_the_cut_short_retry_happens_at_most_once(build, monkeypatch):
 def test_a_background_command_that_ended_rides_along_with_the_next_message(
     build, monkeypatch
 ):
-    monkeypatch.setattr("vollama.tools.shell.jobs.notes", lambda: "exec_1 finished.")
+    monkeypatch.setattr(
+        "vollama.tools.shell.jobs.notes", lambda: "brave-otter finished."
+    )
     build(stream("noted"))
     session = ChatSession()
     view = fakes.RecordingView()
@@ -366,9 +368,87 @@ def test_a_background_command_that_ended_rides_along_with_the_next_message(
     session.ask("hi", view)
 
     note = session.conversation.messages[0]
-    assert note.content == "exec_1 finished."
+    assert note.content == "brave-otter finished."
     assert note.extra["background"] is True
-    assert view.of("notice") == [("exec_1 finished.",)]
+    assert view.of("background") == [("brave-otter finished.",)]
+
+
+def test_a_finished_job_can_start_a_turn_of_its_own(build, monkeypatch):
+    monkeypatch.setattr("vollama.tools.shell.jobs.notes_waiting", lambda: True)
+    monkeypatch.setattr(
+        "vollama.tools.shell.jobs.notes", lambda: "brave-otter finished."
+    )
+    build(stream("the build passed"))
+    session = ChatSession()
+    view = fakes.RecordingView()
+
+    session.resume(view)
+
+    # The note is the turn's user message: nothing else was typed.
+    assert [m.role for m in session.conversation.messages] == ["user", "assistant"]
+    assert session.conversation.messages[0].content == "brave-otter finished."
+    assert view.text() == "the build passed"
+
+
+def test_nothing_to_report_starts_no_turn(build, monkeypatch):
+    monkeypatch.setattr("vollama.tools.shell.jobs.notes_waiting", lambda: False)
+    build(stream("should not be sent"))
+    session = ChatSession()
+
+    session.resume(fakes.RecordingView())
+
+    assert session.conversation.messages == []
+
+
+def test_a_job_that_ends_mid_turn_waits_for_the_turn_to_end(build, ran, monkeypatch):
+    """Not between tool rounds, however convenient the request going out is.
+
+    A note delivered mid-turn arrives in the middle of work the model is part
+    way through, and what it does with it is start that work again: it re-ran
+    tool calls it had already made in every run against a real server. The
+    ending keeps until the turn is over, where `collect_background` takes it.
+    """
+    looks = []
+
+    def notes():
+        # Nothing at the start of the turn; the job ends while the tool runs.
+        looks.append(1)
+        return "brave-otter finished." if len(looks) > 1 else ""
+
+    monkeypatch.setattr("vollama.tools.shell.jobs.notes", notes)
+    build(stream("running it", tool_calls=[fakes.call("run", "{}")]), stream("all done"))
+    session = ChatSession()
+    view = fakes.RecordingView()
+
+    session.ask("build it", view)
+
+    roles = [m.role for m in session.conversation.messages]
+    assert roles == ["user", "assistant", "tool", "assistant"]
+    assert view.of("background") == []
+
+    # And then the window collects it, once there is no turn to interrupt.
+    session.collect_background(view)
+
+    note = session.conversation.messages[-1]
+    assert note.content == "brave-otter finished."
+    assert note.extra["background"] is True
+    assert view.of("background") == [("brave-otter finished.",)]
+
+
+def test_a_note_can_be_taken_into_the_history_without_sending(build, monkeypatch):
+    monkeypatch.setattr(
+        "vollama.tools.shell.jobs.notes", lambda: "brave-otter finished."
+    )
+    build()  # No stream prepared: a request here would fail the test.
+    session = ChatSession()
+    view = fakes.RecordingView()
+
+    session.collect_background(view)
+
+    assert [m.content for m in session.conversation.messages] == [
+        "brave-otter finished."
+    ]
+    assert view.of("background") == [("brave-otter finished.",)]
 
 
 def _max(tokens):
