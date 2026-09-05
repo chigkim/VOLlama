@@ -352,6 +352,68 @@ def test_the_cut_short_retry_happens_at_most_once(build, monkeypatch):
     assert session.conversation.messages[-1].content == "cut again"
 
 
+
+# ------------------------------------------------------------- compaction
+
+
+def _window(size):
+    """Make a preset of `size` tokens the active one."""
+    presets.replace(
+        [("test", Preset(base_url="u", model="m", context_window=size))], "test"
+    )
+
+
+def test_a_prompt_that_nearly_fills_the_window_is_compacted(build, monkeypatch):
+    monkeypatch.setattr(compaction, "summarize", lambda client, messages: "a summary")
+    build(stream("an answer", usage=(900, 5)))
+    session = ChatSession()
+    for n in range(4):
+        session.conversation.add_user(f"q{n}")
+        session.conversation.add_assistant(f"a{n}")
+    _window(1000)
+
+    session.ask("one more", fakes.RecordingView())
+
+    assert session.conversation.summary == "a summary"
+
+
+def test_a_long_think_does_not_count_toward_a_full_window(build, monkeypatch):
+    """The tokens the server charged for but `to_wire()` will never send back.
+
+    A reasoning model spends most of its completion on thinking, which is kept
+    out of every later request. Counting it as context made a chat with plenty
+    of room left compact anyway.
+    """
+    monkeypatch.setattr(compaction, "summarize", lambda client, messages: "a summary")
+    # The bill for the turn is 11,100 tokens against a window of 1,000. What
+    # goes out next is the 100-token prompt and the reply.
+    build(stream("an answer", usage=(100, 11000)))
+    session = ChatSession()
+    for n in range(4):
+        session.conversation.add_user(f"q{n}")
+        session.conversation.add_assistant(f"a{n}")
+    _window(1000)
+
+    session.ask("one more", fakes.RecordingView())
+
+    assert session.conversation.summary == ""
+
+
+def test_the_reply_counts_toward_the_next_prompt(build, monkeypatch):
+    """A prompt just under the threshold, and a reply that carries it over."""
+    monkeypatch.setattr(compaction, "summarize", lambda client, messages: "a summary")
+    build(stream("word " * 200, usage=(700, 200)))
+    session = ChatSession()
+    for n in range(4):
+        session.conversation.add_user(f"q{n}")
+        session.conversation.add_assistant(f"a{n}")
+    _window(1000)
+
+    session.ask("one more", fakes.RecordingView())
+
+    assert session.conversation.summary == "a summary"
+
+
 # ------------------------------------------------------- background reports
 
 

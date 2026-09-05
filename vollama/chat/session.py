@@ -428,10 +428,31 @@ class ChatSession:
         view.status("Compacted")
         return True
 
+    def _next_prompt(self):
+        """How big the next request will be, near enough to decide on.
+
+        Not `usage.total_tokens`. That is what the server charged for the turn,
+        and on a reasoning model most of the completion is thinking -- which is
+        the one thing `Message.to_wire()` never sends back. Counting it toward a
+        full window made a model that thinks hard compact at half of one: a turn
+        whose prompt was 2,436 tokens reported 13,475, and 11,000 of those were
+        discarded before the next request was built.
+
+        So: what the last request cost, which the server measured, plus what has
+        been added since and will go out again. That is the final message of the
+        turn -- the reply, or a tool result when the round budget ran out --
+        counted locally, since the server has not seen it yet.
+        """
+        if not self.usage:
+            return 0
+        added = self.conversation.messages[-1] if self.conversation.messages else None
+        return self.usage.prompt_tokens + (
+            client.count(added.countable()) if added else 0
+        )
+
     def _compact_if_full(self, preset, view):
         """Compact when the exchange that just finished nearly filled the window."""
-        used = self.usage.total_tokens if self.usage else 0
-        if not compaction.needed(used, preset.context_window):
+        if not compaction.needed(self._next_prompt(), preset.context_window):
             return
         if not self.conversation.compactable():
             return

@@ -154,7 +154,9 @@ Because the checkbox is the only gate, switching it on asks first: `ChatWindow._
 
 ### Compaction
 
-A chat that outgrows the preset's `context_window` gets truncated by the server without anyone being told, so `_compact_if_full` runs after every completed turn: if the usage the server reported (or `client.count_messages` over what was sent, when it reports none) is at least `compaction.COMPACT_AT` (0.8) of the window, the model is asked for a handoff summary of itself.
+A chat that outgrows the preset's `context_window` gets truncated by the server without anyone being told, so `_compact_if_full` runs after every completed turn: if the next request will be at least `compaction.COMPACT_AT` (0.8) of the window, the model is asked for a handoff summary of itself.
+
+**What is measured is the next prompt, not the last bill.** `_next_prompt()` is the prompt the server reported (or `client.count_messages` over what was sent, when it reports none) plus a local count of the one message added since — the reply, or a tool result when the round budget ran out. It used to be `usage.total_tokens`, which includes what the server charged for *generating*, and on a reasoning model most of that is thinking — the one thing `Message.to_wire()` never sends back. So a chat with a reasoning model compacted at about half a window on tokens that had already been discarded: a real turn whose prompt was 2,436 reported 13,475, and 11,000 of those were gone before the next request was built.
 
 The summary replaces nothing. It is held on the `Conversation` and spliced in by `outgoing()`, so the transcript, Save and alt+up keep the whole chat. `reset_context()` clears it wherever `messages` is replaced wholesale.
 
