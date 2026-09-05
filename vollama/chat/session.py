@@ -82,8 +82,11 @@ class ChatSession:
         # answer from a finished one.
         self.finish_reason = ""
         # What the last request went out with, kept so the turn can be costed
-        # when the server reports no usage of its own.
+        # when the server reports no usage of its own, and how many messages
+        # the conversation held when it went, which is what tells the ones
+        # added since apart from the ones already paid for.
         self.sent = []
+        self.sent_upto = 0
         # The tools this turn is offering. Set per turn, since search comes and
         # goes with the index and the Tools checkbox moves mid-chat.
         self.tools = []
@@ -212,9 +215,12 @@ class ChatSession:
         used to end it (ten rounds, forty calls) ended the turns that were
         working: a model part-way through a refactor was cut off with the files
         half written, and its only recovery was for the user to notice and say
-        "carry on". Usage compaction does not run mid-turn, so a long turn is
-        the one place the window can fill with nothing watching it; what stops
-        it there is the server refusing, which `_send` compacts and retries.
+        "carry on".
+
+        What keeps a turn of any length inside the window is `_compact_if_full`
+        at the end of each tool round, since nothing else here can: `outgoing()`
+        drops old tool rounds by counting the user's messages, and however long
+        the turn runs there is only ever the one.
 
         The brake is Escape, and it is a real one: `self.generating` is checked
         before every tool call and before every request.
@@ -238,6 +244,14 @@ class ChatSession:
                 self._run_tool(call, view, running)
             if not running:
                 return
+            # Here and nowhere else in the turn. The round is complete, so every
+            # tool call in the history has its result behind it and a summary
+            # can stand in for the lot without orphaning one. Without this a
+            # turn had nothing bounding it at all: `outgoing()` prunes old tool
+            # rounds by counting the user's messages, and a turn has one, so
+            # every result it ever produced went out again on every request in
+            # it until the server refused the whole thing.
+            self._compact_if_full(preset, view)
             view.status("Processing...")
             response, started = self._send(llm, preset, view)
 
@@ -355,9 +369,12 @@ class ChatSession:
         instantly.
 
         What went out is kept, since costing the turn falls to us when the
-        server reports no usage of its own.
+        server reports no usage of its own, and so is how far down the
+        conversation it reached, since `_next_prompt` has to count what has been
+        added past that point.
         """
         self.sent = list(messages)
+        self.sent_upto = len(self.conversation.messages)
         started = time.monotonic()
         response = iter(llm.stream(messages))
         try:
@@ -437,20 +454,29 @@ class ChatSession:
         whose prompt was 2,436 tokens reported 13,475, and 11,000 of those were
         discarded before the next request was built.
 
-        So: what the last request cost, which the server measured, plus what has
-        been added since and will go out again. That is the final message of the
-        turn -- the reply, or a tool result from a turn the user stopped --
-        counted locally, since the server has not seen it yet.
+        So: what the last request cost, which the server measured, plus
+        everything added since, counted locally because the server has not seen
+        it yet. Between turns that is one message, the reply. Inside one it is
+        the whole round -- the assistant's message and every tool result -- and
+        counting only the last of them read a round of a dozen large reads as a
+        single result.
         """
         if not self.usage:
             return 0
-        added = self.conversation.messages[-1] if self.conversation.messages else None
-        return self.usage.prompt_tokens + (
-            client.count(added.countable()) if added else 0
+        added = self.conversation.messages[self.sent_upto :]
+        return self.usage.prompt_tokens + sum(
+            client.count(message.countable()) for message in added
         )
 
     def _compact_if_full(self, preset, view):
-        """Compact when the exchange that just finished nearly filled the window."""
+        """Compact when what has just been added nearly filled the window.
+
+        Called after a completed turn and after each completed tool round.
+        `compact()` summarizes up to the end of the conversation, which is only
+        safe at a boundary where no tool call is still waiting for its result:
+        the summary replaces a span of messages with one, and a result left
+        behind whose call went into the summary makes the history unusable.
+        """
         if not compaction.needed(self._next_prompt(), preset.context_window):
             return
         if not self.conversation.compactable():

@@ -1,4 +1,4 @@
-"""The turn loop: tool rounds, budgets, stopping, and the two retries.
+"""The turn loop: tool rounds, stopping, compaction, and the two retries.
 
 Everything here runs against a fake client and a recording view, which is the
 whole point of the `ChatView` port: this is the most intricate logic in the
@@ -386,6 +386,59 @@ def test_the_reply_counts_toward_the_next_prompt(build, monkeypatch):
     session.ask("one more", fakes.RecordingView())
 
     assert session.conversation.summary == "a summary"
+
+
+def test_a_long_tool_turn_compacts_without_the_user_saying_anything(
+    build, ran, monkeypatch
+):
+    """The one thing that bounds a turn that never hands control back.
+
+    `outgoing()` drops old tool rounds by counting the user's messages, and a
+    turn has one however many rounds it runs, so nothing else here can. The
+    round has to be complete when it happens: the summary stands in for a span
+    of messages, and a tool result whose call went into that span is one the
+    server cannot match to anything.
+    """
+    monkeypatch.setattr(compaction, "summarize", lambda client, messages: "a summary")
+    build(
+        stream("", [fakes.call("run", "{}")], usage=(900, 5)),
+        stream("finished"),
+    )
+    session = ChatSession()
+    _window(1000)
+
+    session.ask("do the work", fakes.RecordingView())
+
+    assert ran == [("run", "{}")]
+    assert session.conversation.summary == "a summary"
+    # The whole round is behind the summary, so nothing on the wire refers to a
+    # call that is no longer there.
+    sent = session.conversation.outgoing()
+    assert not [m for m in sent if m.role == "tool"]
+    assert session.conversation.messages[-1].content == "finished"
+
+
+def test_a_round_is_counted_whole_not_just_its_last_result(build, ran, monkeypatch):
+    """Three results, and only the third would fit under the threshold.
+
+    `_next_prompt` used to count the last message added, which is right between
+    turns -- one reply -- and wrong inside one, where a round adds an assistant
+    message and every result it asked for.
+    """
+    monkeypatch.setattr(compaction, "summarize", lambda client, messages: "a summary")
+    monkeypatch.setattr(
+        "vollama.tools.registry.call",
+        lambda name, arguments, extra=(): "word " * 60,
+    )
+    calls = [fakes.call("read", '{"path": "a"}', id=f"c{n}") for n in range(3)]
+    build(stream("", calls, usage=(700, 5)), stream("finished"))
+    session = ChatSession()
+    _window(1000)
+
+    session.ask("read the lot", fakes.RecordingView())
+
+    assert session.conversation.summary == "a summary"
+
 
 
 # ------------------------------------------------------- background reports
