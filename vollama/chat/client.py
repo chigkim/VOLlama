@@ -21,7 +21,7 @@ preset each time is cheaper than keeping one in step with the settings.
 """
 
 import tiktoken
-from openai import OpenAI
+from openai import BadRequestError, OpenAI
 
 # Imported for their side effect, not their names: PyInstaller cannot see that
 # tiktoken loads its encodings through a plugin module, so a frozen build has no
@@ -44,6 +44,18 @@ OPENAI_PARAMS = frozenset(
         "reasoning_effort",
     }
 )
+
+# The field that caps the reply has two names. `max_tokens` is what every
+# local server understands, and what OpenAI took until the reasoning models:
+# those refuse it by name and want `max_completion_tokens`. Nothing in a base
+# URL or a model id says which, and asking would be a provider branch, so the
+# request states one name and a server that refuses *that name* is answered
+# with the other. The answer is remembered per endpoint and model, so the
+# correction is paid once rather than on every message, and a proxy serving
+# both an old local model and a new hosted one is not answered for as one.
+MAX_TOKENS = "max_tokens"
+MAX_COMPLETION_TOKENS = "max_completion_tokens"
+_RENAMED = set()
 
 # How long to wait on a request. Generous, because a local model on a busy
 # machine can take a very long time to answer and there is nothing to gain by
@@ -72,6 +84,13 @@ class Client:
         self.options = dict(options)
         self.tools = list(tools) if tools else None
         self.max_tokens = max_tokens
+        self.endpoint = (str(getattr(api, "base_url", "")), model)
+
+    def _limit(self):
+        """Which of the two names this endpoint takes for the reply cap."""
+        return (
+            MAX_COMPLETION_TOKENS if self.endpoint in _RENAMED else MAX_TOKENS
+        )
 
     def _request(self, messages, **extra):
         request = {
@@ -81,10 +100,24 @@ class Client:
             **extra,
         }
         if self.max_tokens:
-            request["max_tokens"] = self.max_tokens
+            request[self._limit()] = self.max_tokens
         if self.tools:
             request["tools"] = self.tools
         return request
+
+    def _create(self, messages, **extra):
+        """The request, sent again under the other name if this one is refused."""
+        try:
+            return self.api.chat.completions.create(
+                **self._request(messages, **extra)
+            )
+        except BadRequestError as error:
+            if self._limit() != MAX_TOKENS or not renamed(error):
+                raise
+            _RENAMED.add(self.endpoint)
+            return self.api.chat.completions.create(
+                **self._request(messages, **extra)
+            )
 
     def stream(self, messages):
         """The reply, as the chunks it arrives in.
@@ -93,17 +126,28 @@ class Client:
         do not support it ignore it, which is why there is an estimate to fall
         back on.
         """
-        return self.api.chat.completions.create(
-            **self._request(
-                messages, stream=True, stream_options={"include_usage": True}
-            )
+        return self._create(
+            messages, stream=True, stream_options={"include_usage": True}
         )
 
     def complete(self, messages):
         """The whole reply as text, for a request nobody is watching arrive."""
-        answer = self.api.chat.completions.create(**self._request(messages))
+        answer = self._create(messages)
         choices = answer.choices or []
         return (choices[0].message.content or "") if choices else ""
+
+
+def renamed(error):
+    """Whether this refusal is the server naming the other reply cap.
+
+    Matched on the wording rather than on a model id, because the id is the
+    user's own string and the list of models that have made the switch is not
+    ours to keep: what is reliable is that the server names both fields, the
+    one it refused and the one it wants. `max_tokens` is not a substring of
+    `max_completion_tokens`, so both checks are real.
+    """
+    text = str(error)
+    return MAX_COMPLETION_TOKENS in text and MAX_TOKENS in text
 
 
 def count(text):
